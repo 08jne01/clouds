@@ -1,0 +1,95 @@
+[gd_scene format=3 uid="uid://bc04lnhm07ky1"]
+
+[ext_resource type="Script" uid="uid://wjo8yyg8qlj3" path="res://ClipMap.cs" id="1_ulcgi"]
+[ext_resource type="Shader" uid="uid://o84c0w7r83wg" path="res://Debug.gdshader" id="2_nxogm"]
+[ext_resource type="Shader" uid="uid://cxaobjp2q056y" path="res://Clouds.gdshader" id="3_3253y"]
+[ext_resource type="Script" uid="uid://bpyt2gfti25xm" path="res://Clouds.cs" id="4_u3cyc"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_o4mie"]
+
+[sub_resource type="Sky" id="Sky_0yjkd"]
+sky_material = SubResource("ProceduralSkyMaterial_o4mie")
+
+[sub_resource type="Environment" id="Environment_4ttxi"]
+background_mode = 2
+sky = SubResource("Sky_0yjkd")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ulcgi"]
+render_priority = 0
+shader = ExtResource("2_nxogm")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_nxogm"]
+albedo_color = Color(0.9890774, 0.2774671, 0.40458307, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_3253y"]
+albedo_color = Color(0.24527371, 0.46663606, 0.28592858, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_u3cyc"]
+albedo_color = Color(0.15820605, 0.45062196, 0.52429473, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_4ttxi"]
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_m7jmp"]
+noise_type = 2
+seed = 2
+frequency = 0.0014
+fractal_type = 2
+fractal_octaves = 10
+fractal_gain = 0.6
+
+[sub_resource type="NoiseTexture3D" id="NoiseTexture3D_u3cyc"]
+width = 128
+height = 128
+depth = 128
+noise = SubResource("FastNoiseLite_m7jmp")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_nxogm"]
+render_priority = 0
+shader = ExtResource("3_3253y")
+shader_parameter/density_texture = SubResource("NoiseTexture3D_u3cyc")
+shader_parameter/bb_min = Vector3(-13.086, 16.82, 6.821)
+shader_parameter/bb_max = Vector3(0.5, 19.279, 13.984)
+shader_parameter/light_direction = Vector3(0, 1, 0)
+shader_parameter/light_color = Color(1, 1, 1, 1)
+shader_parameter/falloff = 1.0
+shader_parameter/cloud_threshold = 0.30000000447036
+shader_parameter/cloud_density = 2.0
+shader_parameter/scattering_forward = 0.90000001341108
+shader_parameter/scattering_backward = 0.5000000074506
+shader_parameter/scattering_omnidirectional = 1.0
+shader_parameter/scattering_directional = 1.0
+shader_parameter/scattering_direction_blend = 0.5000000074506
+
+[sub_resource type="BoxMesh" id="BoxMesh_4ttxi"]
+material = SubResource("ShaderMaterial_nxogm")
+size = Vector3(13.586426, 2.4588623, 7.162964)
+
+[node name="Scene" type="Node3D" unique_id=1273189495]
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1712109579]
+transform = Transform3D(1, 0, 0, 0, 0.78653353, 0.6175477, 0, -0.6175477, 0.78653353, -1.1884884, 18.920258, 11.204571)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1458402552]
+environment = SubResource("Environment_4ttxi")
+
+[node name="ClipMap" type="Node3D" parent="." unique_id=1272090478 node_paths=PackedStringArray("marker")]
+script = ExtResource("1_ulcgi")
+m = 16
+material = SubResource("ShaderMaterial_ulcgi")
+mat_block = SubResource("StandardMaterial3D_nxogm")
+mat_fix_up = SubResource("StandardMaterial3D_3253y")
+mat_trim = SubResource("StandardMaterial3D_u3cyc")
+marker = NodePath("../Marker")
+
+[node name="HeightMapDisplay" type="TextureRect" parent="." unique_id=1408778717]
+offset_right = 362.0
+offset_bottom = 362.0
+expand_mode = 5
+
+[node name="Marker" type="MeshInstance3D" parent="." unique_id=1389591964]
+mesh = SubResource("SphereMesh_4ttxi")
+
+[node name="Clouds" type="MeshInstance3D" parent="." unique_id=520172682]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.293213, 18.049614, 10.402933)
+mesh = SubResource("BoxMesh_4ttxi")
+script = ExtResource("4_u3cyc")
