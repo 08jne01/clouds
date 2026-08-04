@@ -2,8 +2,66 @@
 
 [ext_resource type="Script" uid="uid://wjo8yyg8qlj3" path="res://ClipMap.cs" id="1_ulcgi"]
 [ext_resource type="Shader" uid="uid://o84c0w7r83wg" path="res://Debug.gdshader" id="2_nxogm"]
+[ext_resource type="Texture2D" uid="uid://vroikvm31fog" path="res://blue_noise.png" id="2_y2354"]
 [ext_resource type="Shader" uid="uid://cxaobjp2q056y" path="res://Clouds.gdshader" id="3_3253y"]
+[ext_resource type="Shader" uid="uid://ctjomvsaxwxqf" path="res://ScreenSpaceTest.gdshader" id="4_73fnb"]
 [ext_resource type="Script" uid="uid://bpyt2gfti25xm" path="res://Clouds.cs" id="4_u3cyc"]
+[ext_resource type="Shader" uid="uid://buyieowumsp2e" path="res://Water.gdshader" id="5_m7jmp"]
+[ext_resource type="Script" uid="uid://bpqs7301iovy6" path="res://NoiseTest.cs" id="7_ni31j"]
+[ext_resource type="Shader" uid="uid://b340kxrht7joa" path="res://Display3DTexture.gdshader" id="8_xlvrw"]
+
+[sub_resource type="Texture2DRD" id="Texture2DRD_xlvrw"]
+
+[sub_resource type="Texture3DRD" id="Texture3DRD_73fnb"]
+
+[sub_resource type="Texture3DRD" id="Texture3DRD_5juve"]
+
+[sub_resource type="Gradient" id="Gradient_xlvrw"]
+offsets = PackedFloat32Array(0, 0.0397878, 0.41909814, 1)
+colors = PackedColorArray(0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_xlvrw"]
+gradient = SubResource("Gradient_xlvrw")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_nxogm"]
+render_priority = 0
+shader = ExtResource("3_3253y")
+shader_parameter/density_texture = SubResource("Texture3DRD_73fnb")
+shader_parameter/fine_density_texture = SubResource("Texture3DRD_5juve")
+shader_parameter/height_texture = SubResource("GradientTexture1D_xlvrw")
+shader_parameter/cloud_coverage = SubResource("Texture2DRD_xlvrw")
+shader_parameter/bb_min = Vector3(-1545.8516, 271.95886, -2306.8313)
+shader_parameter/bb_max = Vector3(1291.97, 963.2677, 1702.9678)
+shader_parameter/light_direction = Vector3(0, 0.66379744, -0.7479124)
+shader_parameter/light_color = Color(1, 1, 1, 1)
+shader_parameter/falloff_light = 0.4
+shader_parameter/falloff_color = 0.4
+shader_parameter/darkness_threshold = 0.01
+shader_parameter/cloud_threshold = 0.5499999877064
+shader_parameter/cloud_threshold_delta = 0.2999999932944
+shader_parameter/cloud_density = 0.3
+shader_parameter/cloud_scale = 2.0
+shader_parameter/fine_scale = 10.0
+shader_parameter/fine_blend = 0.0999999977648
+shader_parameter/scattering_forward = 0.70000001043084
+shader_parameter/scattering_backward = 0.20000000298024
+shader_parameter/scattering_omnidirectional = 0.80000001192096
+shader_parameter/scattering_directional = 0.5000000074506
+shader_parameter/scattering_direction_blend = 0.5000000074506
+shader_parameter/blue_noise = ExtResource("2_y2354")
+
+[sub_resource type="BoxMesh" id="BoxMesh_4ttxi"]
+material = SubResource("ShaderMaterial_nxogm")
+size = Vector3(2837.8215, 691.30884, 4009.799)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_xlvrw"]
+render_priority = 0
+shader = ExtResource("4_73fnb")
+
+[sub_resource type="QuadMesh" id="QuadMesh_4ttxi"]
+material = SubResource("ShaderMaterial_xlvrw")
+flip_faces = true
+size = Vector2(2, 2)
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_o4mie"]
 
@@ -29,45 +87,58 @@ albedo_color = Color(0.15820605, 0.45062196, 0.52429473, 1)
 
 [sub_resource type="SphereMesh" id="SphereMesh_4ttxi"]
 
-[sub_resource type="FastNoiseLite" id="FastNoiseLite_m7jmp"]
-noise_type = 2
-seed = 2
-frequency = 0.0014
-fractal_type = 2
-fractal_octaves = 10
-fractal_gain = 0.6
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_xlvrw"]
+frequency = 0.0081
 
-[sub_resource type="NoiseTexture3D" id="NoiseTexture3D_u3cyc"]
-width = 128
-height = 128
-depth = 128
-noise = SubResource("FastNoiseLite_m7jmp")
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_73fnb"]
+noise = SubResource("FastNoiseLite_xlvrw")
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_nxogm"]
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_ni31j"]
+frequency = 0.0011
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_5juve"]
+noise = SubResource("FastNoiseLite_ni31j")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_y2354"]
 render_priority = 0
-shader = ExtResource("3_3253y")
-shader_parameter/density_texture = SubResource("NoiseTexture3D_u3cyc")
-shader_parameter/bb_min = Vector3(-13.086, 16.82, 6.821)
-shader_parameter/bb_max = Vector3(0.5, 19.279, 13.984)
-shader_parameter/light_direction = Vector3(0, 1, 0)
-shader_parameter/light_color = Color(1, 1, 1, 1)
+shader = ExtResource("5_m7jmp")
+shader_parameter/shallow_water_color = Color(0.213418, 0.98603576, 0.85062057, 1)
+shader_parameter/deep_water_color = Color(0.06748007, 0.2572312, 0.5342382, 1)
+shader_parameter/speed_0 = Vector2(0.01, 0.01)
+shader_parameter/speed_1 = Vector2(1, 0.01)
+shader_parameter/waves = SubResource("NoiseTexture2D_73fnb")
+shader_parameter/waves1 = SubResource("NoiseTexture2D_5juve")
 shader_parameter/falloff = 1.0
-shader_parameter/cloud_threshold = 0.30000000447036
-shader_parameter/cloud_density = 2.0
-shader_parameter/scattering_forward = 0.90000001341108
-shader_parameter/scattering_backward = 0.5000000074506
-shader_parameter/scattering_omnidirectional = 1.0
-shader_parameter/scattering_directional = 1.0
-shader_parameter/scattering_direction_blend = 0.5000000074506
+shader_parameter/wave_height = 0.25
 
-[sub_resource type="BoxMesh" id="BoxMesh_4ttxi"]
-material = SubResource("ShaderMaterial_nxogm")
-size = Vector3(13.586426, 2.4588623, 7.162964)
+[sub_resource type="CylinderMesh" id="CylinderMesh_m7jmp"]
+material = SubResource("ShaderMaterial_y2354")
+top_radius = 4.430664
+bottom_radius = 4.430664
+height = 6.506836
+
+[sub_resource type="SphereMesh" id="SphereMesh_o4mie"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ni31j"]
+shader = ExtResource("8_xlvrw")
+shader_parameter/channel = 3
+shader_parameter/slice = 0.70999998413008
 
 [node name="Scene" type="Node3D" unique_id=1273189495]
 
+[node name="Clouds" type="MeshInstance3D" parent="." unique_id=520172682 node_paths=PackedStringArray("light")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -126.940796, 617.6133, -301.93182)
+mesh = SubResource("BoxMesh_4ttxi")
+script = ExtResource("4_u3cyc")
+light = NodePath("../DirectionalLight3D")
+
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1712109579]
-transform = Transform3D(1, 0, 0, 0, 0.78653353, 0.6175477, 0, -0.6175477, 0.78653353, -1.1884884, 18.920258, 11.204571)
+transform = Transform3D(0.97534263, -0.15163787, -0.16035193, 0, 0.72657335, -0.6870889, 0.22069614, 0.6701471, 0.708658, -8.846212, 4.6651382, 4.5356207)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Camera3D" unique_id=613751650]
+transform = Transform3D(1, 0, 0, 0, 1, -2.9802322e-08, 0, 2.9802322e-08, 1, 0, 0, 0)
+extra_cull_margin = 16384.0
+mesh = SubResource("QuadMesh_4ttxi")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1458402552]
 environment = SubResource("Environment_4ttxi")
@@ -81,15 +152,36 @@ mat_fix_up = SubResource("StandardMaterial3D_3253y")
 mat_trim = SubResource("StandardMaterial3D_u3cyc")
 marker = NodePath("../Marker")
 
-[node name="HeightMapDisplay" type="TextureRect" parent="." unique_id=1408778717]
+[node name="Marker" type="MeshInstance3D" parent="." unique_id=1389591964]
+mesh = SubResource("SphereMesh_4ttxi")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1869975590]
+transform = Transform3D(1, 0, 0, 0, -0.7479124, 0.66379744, 0, -0.66379744, -0.7479124, 0, 30.337557, 140.68443)
+
+[node name="Water" type="MeshInstance3D" parent="." unique_id=531172004]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20.778538, 28.265081, 17.473635)
+visible = false
+mesh = SubResource("CylinderMesh_m7jmp")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=290114440]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20.883, 29.853878, 17.816452)
+visible = false
+mesh = SubResource("SphereMesh_o4mie")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1947505561]
+script = ExtResource("7_ni31j")
+Generate = true
+square_size3d = Vector4i(8, 16, 32, 64)
+
+[node name="TextureDisplay" type="TextureRect" parent="CanvasLayer" unique_id=1408778717]
+visible = false
 offset_right = 362.0
 offset_bottom = 362.0
 expand_mode = 5
 
-[node name="Marker" type="MeshInstance3D" parent="." unique_id=1389591964]
-mesh = SubResource("SphereMesh_4ttxi")
-
-[node name="Clouds" type="MeshInstance3D" parent="." unique_id=520172682]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.293213, 18.049614, 10.402933)
-mesh = SubResource("BoxMesh_4ttxi")
-script = ExtResource("4_u3cyc")
+[node name="TextureDisplay3D" type="ColorRect" parent="CanvasLayer" unique_id=147330151]
+visible = false
+material = SubResource("ShaderMaterial_ni31j")
+offset_left = 783.0
+offset_right = 1150.0
+offset_bottom = 367.0

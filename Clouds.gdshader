@@ -2,13 +2,22 @@ shader_type spatial;
 render_mode unshaded;
 render_mode cull_disabled;
 uniform sampler3D density_texture : repeat_enable;
+uniform sampler3D fine_density_texture : repeat_enable;
+uniform sampler2D height_texture : repeat_disable;
+uniform sampler2D cloud_coverage : repeat_enable;
 uniform vec3 bb_min;
 uniform vec3 bb_max;
 uniform vec3 light_direction;
 uniform vec3 light_color: source_color;
-uniform float falloff;
-uniform float cloud_threshold: hint_range(0.0, 1.0, 0.1);
+uniform float falloff_light = 1.0;
+uniform float falloff_color = 1.0;
+uniform float darkness_threshold = 0.1;
+uniform float cloud_threshold: hint_range(0.0, 1.0, 0.01) = 0.5;
+uniform float cloud_threshold_delta: hint_range(0.0, 1.0, 0.01) = 0.1;
 uniform float cloud_density;
+uniform float cloud_scale = 1.0;
+uniform float fine_scale : hint_range(0.0, 100.0, 1.0) = 4.0;
+uniform float fine_blend : hint_range(0.0, 1.0, 0.01) = 0.2;
 
 uniform float scattering_forward : hint_range(0.0, 1.0, 0.1);
 uniform float scattering_backward : hint_range(0.0, 1.0, 0.1);
@@ -16,6 +25,7 @@ uniform float scattering_omnidirectional : hint_range(0.0, 1.0, 0.1);
 uniform float scattering_directional : hint_range(0.0, 1.0, 0.1);
 uniform float scattering_direction_blend : hint_range(0.0, 1.0, 0.1);
 
+uniform sampler2D blue_noise : filter_nearest;
 uniform sampler2D screen_texture : hint_screen_texture;
 
 //https://jcgt.org/published/0007/03/04/
@@ -39,15 +49,53 @@ void vertex() {
 	// Called for every vertex the material is visible on.
 }
 
+float SampleDensityTexture(sampler3D sampler, vec3 uvw)
+{
+	vec4 layer_density = texture(sampler, uvw);
+	float density = 
+		layer_density.w * 0.5 + 
+		layer_density.z * 0.25 +
+		layer_density.y * 0.125 +
+		layer_density.x * 0.0625;
+		
+	density /= 0.9375;
+	return density;
+}
+
 float Density(vec3 position)
 {
+	position += TIME * vec3(20.0,0.0,0.0);
+	
 	vec3 delta = bb_max - bb_min;
-	float max_dim = max(delta.x, max(delta.y,delta.z));
+	float max_dim = cloud_scale * delta.y; //max(delta.x, max(delta.y,delta.z));
 	
 	vec3 uvw = (position - bb_min) / vec3(max_dim);
+	vec3 uvw_world = position / vec3(max_dim);
 	
-	float density = texture(density_texture,uvw).r;
-	return step(density, cloud_threshold) * cloud_density;
+	float coverage = texture(cloud_coverage, uvw_world.xz).b;
+	
+	float course_density = SampleDensityTexture(density_texture, uvw_world);
+	float fine_density = SampleDensityTexture(fine_density_texture, uvw_world * fine_scale);
+	
+	float density = course_density * (1.0 - fine_blend) + fine_density * fine_blend;
+	density *= texture(height_texture, vec2(uvw.y, 0.0)).r;
+	//density *= coverage;
+	
+	float cloud_t = clamp((density - cloud_threshold) / cloud_threshold_delta, 0.0, 1.0);
+	
+	return mix(0.0, cloud_density, cloud_t);
+	
+	//return step(density, cloud_threshold) * cloud_density;
+}
+
+float BeerPowder(float optical_depth)
+{
+	return (1.0 - exp(-optical_depth * 2.0)) * exp(-optical_depth);
+}
+
+float Beer(float optical_depth)
+{
+	return exp(-optical_depth);
 }
 
 float LightContribution(vec3 ray_origin)
@@ -67,7 +115,11 @@ float LightContribution(vec3 ray_origin)
 		density += Density(ray_origin);//exp(-falloff * );
 		ray_origin += ray_step;
 	}
-	return exp(-falloff * density * dt);
+	float optical_depth = falloff_light * density * dt;
+	
+	float transmittance = BeerPowder(optical_depth);
+	
+	return transmittance * (1.0 - darkness_threshold) + darkness_threshold;
 }
 
 //https://en.wikipedia.org/wiki/Henyey%E2%80%93Greenstein_phase_function
@@ -96,11 +148,16 @@ vec4 RayMarch(vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv)
 	// environment colour
 	vec3 color = texture(screen_texture, screen_uv).rgb;// vec3(1.0);//vec3(0.0);
 	
-	const int n_samples = 256;
+	const int n_samples = 128;
 	
 	float dt = depth / float(n_samples-1);
 	
+	float noise_offset = dt * texture(blue_noise, fract(4.0 * screen_uv * TIME)).r;
+	
+	ray_origin += ray_direction * noise_offset;
+	
 	vec3 ray_step = ray_direction * dt;
+	
 	
 	float light_energy = 0.0;
 	
@@ -111,6 +168,7 @@ vec4 RayMarch(vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv)
 	
 	for ( int i = 0; i < n_samples; i++ )
 	{
+		//float t = -a / z + b;
 		float density = Density(ray_origin);
 		
 		if ( density > 0.0 )
@@ -119,16 +177,18 @@ vec4 RayMarch(vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv)
 			
 			//color = light_color;// * 0.1 * light_depth;// LightContribution(ray_origin, light_depth);
 			light_energy += light_transmittance * transmittance * density;
-			transmittance *= exp(-falloff * density * dt);
+			transmittance *= exp(-falloff_color * density * dt);
+			if ( transmittance < 0.01 )
+			{
+				transmittance = 0.0;
+				break;
+			}
 			//break;
 		}
 		
 		
-		//if ( transmittance < 0.001 )
-		//{
-			//break;
-		//}
 		
+		//z += dt;
 		ray_origin += ray_step;
 	}
 	
@@ -154,17 +214,22 @@ void fragment() {
 	
 	vec2 intersection = IntersectBox(bb_min, bb_max, ray_origin, inverse_ray_direction);
 
-	if ( intersection.x <= 0.0 )
-	{
-		discard;
-	}
+	//if ( intersection.x <= 0.0 )
+	//{
+		//discard;
+	//}
 	
 	float t = intersection.x;
 	float depth = intersection.y;
 
 	//intersection = IntersectBox(bb_min, bb_max, ray_origin + ray_direction * (t + 1.0), inverse_ray_direction);
 
-	vec4 light_result = RayMarch(ray_origin + ray_direction * t, ray_direction, depth, screen_uv); //vec3(value);
+	vec4 light_result = RayMarch(
+		ray_origin + ray_direction * (t - 0.01), 
+		ray_direction, 
+		depth, 
+		screen_uv
+	); //vec3(value);
 	ALBEDO = light_result.rgb;//Density(ray_origin + ray_direction * t) * vec3(1.0);// light_result.rgb;
 	//ALPHA = clamp(light_result.a, 0.0, 1.0);
 	

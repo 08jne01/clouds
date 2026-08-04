@@ -123,7 +123,7 @@ void main() {
 
 
 
-    uvec2 max_size = gl_WorkGroupSize.xy + gl_NumWorkGroups.xy;
+    uvec2 max_size = gl_WorkGroupSize.xy * gl_NumWorkGroups.xy;
     vec2 uv = vec2(gl_GlobalInvocationID.xy) / vec2(max_size-1);
 
     // gl_GlobalInvocationID.x uniquely identifies this invocation across all work groups

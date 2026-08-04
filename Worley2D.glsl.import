@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://3p8ab56y0doh"
+path="res://.godot/imported/Worley2D.glsl-9fbdbb2c36d0d2a7d1843a7401937bf7.res"
+
+[deps]
+
+source_file="res://Worley2D.glsl"
+dest_files=["res://.godot/imported/Worley2D.glsl-9fbdbb2c36d0d2a7d1843a7401937bf7.res"]
+
+[params]
+
