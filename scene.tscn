@@ -25,10 +25,6 @@ gradient = SubResource("Gradient_xlvrw")
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_nxogm"]
 render_priority = 0
 shader = ExtResource("3_3253y")
-shader_parameter/density_texture = SubResource("Texture3DRD_73fnb")
-shader_parameter/fine_density_texture = SubResource("Texture3DRD_5juve")
-shader_parameter/height_texture = SubResource("GradientTexture1D_xlvrw")
-shader_parameter/cloud_coverage = SubResource("Texture2DRD_xlvrw")
 shader_parameter/bb_min = Vector3(-10671.919, 663.05676, -9904.0205)
 shader_parameter/bb_max = Vector3(9328.081, 2663.0566, 10095.9795)
 shader_parameter/light_direction = Vector3(0, 0.66379744, -0.7479124)
@@ -47,6 +43,10 @@ shader_parameter/scattering_backward = 0.20000000298024
 shader_parameter/scattering_omnidirectional = 0.80000001192096
 shader_parameter/scattering_directional = 0.5000000074506
 shader_parameter/scattering_direction_blend = 0.5000000074506
+shader_parameter/density_texture = SubResource("Texture3DRD_73fnb")
+shader_parameter/fine_density_texture = SubResource("Texture3DRD_5juve")
+shader_parameter/height_texture = SubResource("GradientTexture1D_xlvrw")
+shader_parameter/cloud_coverage = SubResource("Texture2DRD_xlvrw")
 shader_parameter/blue_noise = ExtResource("2_y2354")
 
 [sub_resource type="BoxMesh" id="BoxMesh_4ttxi"]
