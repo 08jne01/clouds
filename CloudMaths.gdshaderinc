@@ -1,4 +1,53 @@
-#include "CloudUniforms.gdshaderinc"
+#ifdef COMPUTE
+#define LAYOUT(s,b,u) layout(s, b) u
+#define UNIFORM(u) u
+#define HINT(h)
+#define DEFAULT(d)
+#else
+#define LAYOUT(s,b,u) u
+#define UNIFORM(u) uniform u
+#define HINT(h) : h
+#define DEFAULT(d) = d
+#endif
+
+// Set 0 Reserved for Compute Data
+LAYOUT(set = 0, binding = 2, uniform sampler2D depth_texture)        HINT(hint_depth_texture);
+
+#ifdef COMPUTE
+// Use a UBO for compute shader
+layout(std430, set = 1, binding = 0) buffer CloudSettings
+{
+#endif
+	UNIFORM(vec3 bb_min);
+	UNIFORM(vec3 bb_max);
+	UNIFORM(vec3 light_direction);
+	UNIFORM(vec4 light_color)                   HINT(source_color);
+	UNIFORM(float falloff_light)                DEFAULT(1.0);
+	UNIFORM(float falloff_color)                DEFAULT(1.0);
+	UNIFORM(float darkness_threshold)           DEFAULT(0.1);
+	UNIFORM(float cloud_threshold)              HINT(hint_range(0.0, 1.0, 0.01))    DEFAULT(0.5);
+	UNIFORM(float cloud_threshold_delta)        HINT(hint_range(0.0, 1.0, 0.01))    DEFAULT(0.1);
+	UNIFORM(float cloud_density);
+	UNIFORM(float cloud_scale)                  DEFAULT(1.0);
+	UNIFORM(float fine_scale)                   HINT(hint_range(0.0, 100.0, 1.0))   DEFAULT(4.0);
+	UNIFORM(float fine_blend)                   HINT(hint_range(0.0, 1.0, 0.01))    DEFAULT(0.2);
+	
+	UNIFORM(float scattering_forward)           HINT(hint_range(0.0, 1.0, 0.1));
+	UNIFORM(float scattering_backward)          HINT(hint_range(0.0, 1.0, 0.1));
+	UNIFORM(float scattering_omnidirectional)   HINT(hint_range(0.0, 1.0, 0.1));
+	UNIFORM(float scattering_directional)       HINT(hint_range(0.0, 1.0, 0.1));
+	UNIFORM(float scattering_direction_blend)   HINT(hint_range(0.0, 1.0, 0.1));
+	UNIFORM(float padding0); // 31 floats
+	UNIFORM(float padding1); // 32 floats
+#ifdef COMPUTE
+};
+#endif
+
+LAYOUT(set = 1, binding = 1, uniform sampler3D density_texture)      HINT(repeat_enable);
+LAYOUT(set = 1, binding = 2, uniform sampler3D fine_density_texture) HINT(repeat_enable);
+LAYOUT(set = 1, binding = 3, uniform sampler2D height_texture)       HINT(repeat_disable);
+LAYOUT(set = 1, binding = 4, uniform sampler2D cloud_coverage)       HINT(repeat_enable);
+LAYOUT(set = 1, binding = 5, uniform sampler2D blue_noise)           HINT(filter_nearest);
 
 //https://jcgt.org/published/0007/03/04/
 //https://github.com/SebLague/Clouds/blob/master/Assets/Scripts/Clouds/Shaders/Clouds.shader
@@ -17,9 +66,8 @@ vec2 IntersectBox(vec3 box_min, vec3 box_max, vec3 ray_origin, vec3 inverse_ray)
 	return vec2(distance_to_box, distance_inside_box);
 }
 
-float SampleDensityTexture(sampler3D sampler, vec3 uvw)
+float SampleDensityTexture(vec4 layer_density)
 {
-	vec4 layer_density = texture(sampler, uvw);
 	float density = 
 		layer_density.w * 0.5 + 
 		layer_density.z * 0.25 +
@@ -42,8 +90,8 @@ float Density(vec3 position, float time)
 	
 	float coverage = texture(cloud_coverage, uvw_world.xz).b;
 	
-	float course_density = SampleDensityTexture(density_texture, uvw_world);
-	float fine_density = SampleDensityTexture(fine_density_texture, uvw_world * fine_scale);
+	float course_density = SampleDensityTexture(texture(density_texture, uvw_world));
+	float fine_density = SampleDensityTexture(texture(fine_density_texture, uvw_world * fine_scale));
 	
 	float density = course_density * (1.0 - fine_blend) + fine_density * fine_blend;
 	density *= texture(height_texture, vec2(uvw.y, 0.0)).r;
@@ -123,11 +171,11 @@ vec4 RayMarch(vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv, 
 	// environment colour
 	vec3 color = vec3(0.0);// texture(screen_texture, screen_uv).rgb;// vec3(1.0);//vec3(0.0);
 	
-	const int n_samples = 128;
+	const int n_samples = 256;
 	
 	float dt = depth / float(n_samples-1);
 	
-	float noise_offset = dt * texture(blue_noise, fract(4.0 * screen_uv * TIME)).r;
+	float noise_offset = dt * texture(blue_noise, fract(4.0 * screen_uv * time)).r;
 	ray_origin += ray_direction * noise_offset;
 	
 	vec3 ray_step = ray_direction * dt;
@@ -162,7 +210,7 @@ vec4 RayMarch(vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv, 
 	}
 	
 	light_energy *= phase * dt * 1.0;
-	return vec4(light_color * light_energy, 1.0 - transmittance);
+	return vec4(light_color.rgb * light_energy, 1.0 - transmittance);
 }
 
 vec4 CalculateCloud(
@@ -178,7 +226,7 @@ vec4 CalculateCloud(
 	float t = intersection.x;
 	float depth = intersection.y;
 	depth = min(depth, pixel_depth-intersection.x);
-	
+
 	if ( depth <= 0.0 || intersection.y <= 0.0 )
 	{
 		return vec4(0.0);
@@ -191,4 +239,41 @@ vec4 CalculateCloud(
 		screen_uv,
 		time
 	);
+}
+
+vec4 ProcessPixel(
+	mat4 inv_view_mat,
+	mat4 inv_proj_mat,
+	vec2 screen_uv,
+	float time
+)
+{
+	// Called for every pixel the material is visible on.
+	vec3 ray_origin = inv_view_mat[3].xyz;
+
+	//https://godotshaders.com/shader/volumetric-raymarched-animated-clouds-v2/
+	float screen_depth = texture(depth_texture, screen_uv).r;
+	vec3 ndc = vec3(screen_uv * 2.0 - 1.0, screen_depth);
+	
+	vec4 view = inv_proj_mat * vec4(ndc, 1.0);
+	view.xyz /= view.w;
+    float linear_depth = -view.z;
+	vec3 ray_direction_local = normalize(view.xyz);
+	ray_direction_local = normalize(ray_direction_local);
+	vec3 ray_direction = mat3(inv_view_mat) * ray_direction_local;
+	
+
+	//return texture(blue_noise, fract(4.0 * screen_uv * time));
+
+	//return vec4(normalize(ray_direction), 1.0);
+
+	vec4 pixel = CalculateCloud(
+		ray_origin,
+		ray_direction,
+		screen_uv,
+		linear_depth,
+		time
+	);
+
+	return pixel;
 }

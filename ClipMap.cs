@@ -505,7 +505,9 @@ public partial class ClipMap : Node3D
 
         int n = 4 * m - 2;
         int scale = 1 << element;
-        marker.Position = LevelOrigin(element) + new Vector3(n * scale * 2, 0, 0);
+
+        if ( marker != null )
+            marker.Position = LevelOrigin(element) + new Vector3(n * scale * 2, 0, 0);
     }
 
 
