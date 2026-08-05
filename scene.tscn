@@ -4,7 +4,6 @@
 [ext_resource type="Shader" uid="uid://o84c0w7r83wg" path="res://Debug.gdshader" id="2_nxogm"]
 [ext_resource type="Texture2D" uid="uid://vroikvm31fog" path="res://blue_noise.png" id="2_y2354"]
 [ext_resource type="Shader" uid="uid://cxaobjp2q056y" path="res://Clouds.gdshader" id="3_3253y"]
-[ext_resource type="Shader" uid="uid://ctjomvsaxwxqf" path="res://ScreenSpaceTest.gdshader" id="4_73fnb"]
 [ext_resource type="Script" uid="uid://bpyt2gfti25xm" path="res://Clouds.cs" id="4_u3cyc"]
 [ext_resource type="Shader" uid="uid://buyieowumsp2e" path="res://Water.gdshader" id="5_m7jmp"]
 [ext_resource type="Script" uid="uid://bpqs7301iovy6" path="res://NoiseTest.cs" id="7_ni31j"]
@@ -17,7 +16,7 @@
 [sub_resource type="Texture3DRD" id="Texture3DRD_5juve"]
 
 [sub_resource type="Gradient" id="Gradient_xlvrw"]
-offsets = PackedFloat32Array(0, 0.0397878, 0.41909814, 1)
+offsets = PackedFloat32Array(0, 0.074270554, 0.66843504, 1)
 colors = PackedColorArray(0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1)
 
 [sub_resource type="GradientTexture1D" id="GradientTexture1D_xlvrw"]
@@ -30,17 +29,17 @@ shader_parameter/density_texture = SubResource("Texture3DRD_73fnb")
 shader_parameter/fine_density_texture = SubResource("Texture3DRD_5juve")
 shader_parameter/height_texture = SubResource("GradientTexture1D_xlvrw")
 shader_parameter/cloud_coverage = SubResource("Texture2DRD_xlvrw")
-shader_parameter/bb_min = Vector3(-1545.8516, 271.95886, -2306.8313)
-shader_parameter/bb_max = Vector3(1291.97, 963.2677, 1702.9678)
+shader_parameter/bb_min = Vector3(-10671.919, 663.05676, -9904.0205)
+shader_parameter/bb_max = Vector3(9328.081, 2663.0566, 10095.9795)
 shader_parameter/light_direction = Vector3(0, 0.66379744, -0.7479124)
 shader_parameter/light_color = Color(1, 1, 1, 1)
 shader_parameter/falloff_light = 0.4
 shader_parameter/falloff_color = 0.4
 shader_parameter/darkness_threshold = 0.01
-shader_parameter/cloud_threshold = 0.5499999877064
-shader_parameter/cloud_threshold_delta = 0.2999999932944
+shader_parameter/cloud_threshold = 0.48999998904752
+shader_parameter/cloud_threshold_delta = 0.999999977648
 shader_parameter/cloud_density = 0.3
-shader_parameter/cloud_scale = 2.0
+shader_parameter/cloud_scale = 1.0
 shader_parameter/fine_scale = 10.0
 shader_parameter/fine_blend = 0.0999999977648
 shader_parameter/scattering_forward = 0.70000001043084
@@ -52,14 +51,10 @@ shader_parameter/blue_noise = ExtResource("2_y2354")
 
 [sub_resource type="BoxMesh" id="BoxMesh_4ttxi"]
 material = SubResource("ShaderMaterial_nxogm")
-size = Vector3(2837.8215, 691.30884, 4009.799)
+size = Vector3(20000, 2000, 20000)
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_xlvrw"]
-render_priority = 0
-shader = ExtResource("4_73fnb")
-
-[sub_resource type="QuadMesh" id="QuadMesh_4ttxi"]
-material = SubResource("ShaderMaterial_xlvrw")
+[sub_resource type="QuadMesh" id="QuadMesh_73fnb"]
+material = SubResource("ShaderMaterial_nxogm")
 flip_faces = true
 size = Vector2(2, 2)
 
@@ -86,11 +81,13 @@ albedo_color = Color(0.24527371, 0.46663606, 0.28592858, 1)
 albedo_color = Color(0.15820605, 0.45062196, 0.52429473, 1)
 
 [sub_resource type="SphereMesh" id="SphereMesh_4ttxi"]
+radius = 100.0
+height = 200.0
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_xlvrw"]
 frequency = 0.0081
 
-[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_73fnb"]
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_fy5k1"]
 noise = SubResource("FastNoiseLite_xlvrw")
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_ni31j"]
@@ -106,7 +103,7 @@ shader_parameter/shallow_water_color = Color(0.213418, 0.98603576, 0.85062057, 1
 shader_parameter/deep_water_color = Color(0.06748007, 0.2572312, 0.5342382, 1)
 shader_parameter/speed_0 = Vector2(0.01, 0.01)
 shader_parameter/speed_1 = Vector2(1, 0.01)
-shader_parameter/waves = SubResource("NoiseTexture2D_73fnb")
+shader_parameter/waves = SubResource("NoiseTexture2D_fy5k1")
 shader_parameter/waves1 = SubResource("NoiseTexture2D_5juve")
 shader_parameter/falloff = 1.0
 shader_parameter/wave_height = 0.25
@@ -127,18 +124,21 @@ shader_parameter/slice = 0.70999998413008
 [node name="Scene" type="Node3D" unique_id=1273189495]
 
 [node name="Clouds" type="MeshInstance3D" parent="." unique_id=520172682 node_paths=PackedStringArray("light")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -126.940796, 617.6133, -301.93182)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -671.9193, 1663.0568, 95.979675)
+visible = false
 mesh = SubResource("BoxMesh_4ttxi")
 script = ExtResource("4_u3cyc")
 light = NodePath("../DirectionalLight3D")
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1712109579]
-transform = Transform3D(0.97534263, -0.15163787, -0.16035193, 0, 0.72657335, -0.6870889, 0.22069614, 0.6701471, 0.708658, -8.846212, 4.6651382, 4.5356207)
+cull_mask = 1
+near = 0.1
+far = 30000.0
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Camera3D" unique_id=613751650]
-transform = Transform3D(1, 0, 0, 0, 1, -2.9802322e-08, 0, 2.9802322e-08, 1, 0, 0, 0)
+[node name="CloudSurface" type="MeshInstance3D" parent="Camera3D" unique_id=613751650]
+layers = 1048575
 extra_cull_margin = 16384.0
-mesh = SubResource("QuadMesh_4ttxi")
+mesh = SubResource("QuadMesh_73fnb")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1458402552]
 environment = SubResource("Environment_4ttxi")
@@ -153,6 +153,7 @@ mat_trim = SubResource("StandardMaterial3D_u3cyc")
 marker = NodePath("../Marker")
 
 [node name="Marker" type="MeshInstance3D" parent="." unique_id=1389591964]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1226.4536, -433.30573)
 mesh = SubResource("SphereMesh_4ttxi")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1869975590]
@@ -170,7 +171,6 @@ mesh = SubResource("SphereMesh_o4mie")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1947505561]
 script = ExtResource("7_ni31j")
-Generate = true
 square_size3d = Vector4i(8, 16, 32, 64)
 
 [node name="TextureDisplay" type="TextureRect" parent="CanvasLayer" unique_id=1408778717]
@@ -185,3 +185,7 @@ material = SubResource("ShaderMaterial_ni31j")
 offset_left = 783.0
 offset_right = 1150.0
 offset_bottom = 367.0
+
+[node name="Marker2" type="MeshInstance3D" parent="." unique_id=219335155]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10000, 0, 0)
+mesh = SubResource("SphereMesh_4ttxi")

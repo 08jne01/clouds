@@ -30,8 +30,7 @@ public static class Worley
         compute.width = width;
         compute.height = height;
         compute.depth = depth;
-        compute.square_size = square_size;
-
+        compute.square_size = square_size;    
 
         var shader_file = GD.Load<RDShaderFile>(depth == 1 ? "res://Worley2D.glsl" : "res://Worley3D.glsl");
         var shader_byte_code = shader_file.GetSpirV();

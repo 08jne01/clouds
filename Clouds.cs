@@ -89,6 +89,12 @@ public partial class Clouds : MeshInstance3D
         material.SetShaderParameter("bb_min", Position + bb.Position);
         material.SetShaderParameter("bb_max", Position + bb.End);
         material.SetShaderParameter("light_direction", light.Basis.Column2);
+
+        // var parameters = RenderingServer.GetShaderParameterList(material.Shader.GetRid());
+        // foreach ( var parameter in parameters )
+        // {
+        //     GD.Print(parameter);
+        // }
     }
 
     public override void _Ready()
@@ -103,6 +109,9 @@ public partial class Clouds : MeshInstance3D
     public override void _Process(double delta)
     {
         UpdateShader();
+
+        GetViewport().GetCamera3D().Near = 0.1f;
+        GetViewport().GetCamera3D().Far = 30000.0f;
     }
 
 

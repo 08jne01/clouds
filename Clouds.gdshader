@@ -1,10 +1,9 @@
 shader_type spatial;
+
 render_mode unshaded;
 render_mode cull_disabled;
-uniform sampler3D density_texture : repeat_enable;
-uniform sampler3D fine_density_texture : repeat_enable;
-uniform sampler2D height_texture : repeat_disable;
-uniform sampler2D cloud_coverage : repeat_enable;
+render_mode blend_mix;
+
 uniform vec3 bb_min;
 uniform vec3 bb_max;
 uniform vec3 light_direction;
@@ -25,8 +24,13 @@ uniform float scattering_omnidirectional : hint_range(0.0, 1.0, 0.1);
 uniform float scattering_directional : hint_range(0.0, 1.0, 0.1);
 uniform float scattering_direction_blend : hint_range(0.0, 1.0, 0.1);
 
+uniform sampler3D density_texture : repeat_enable;
+uniform sampler3D fine_density_texture : repeat_enable;
+uniform sampler2D height_texture : repeat_disable;
+uniform sampler2D cloud_coverage : repeat_enable;
 uniform sampler2D blue_noise : filter_nearest;
 uniform sampler2D screen_texture : hint_screen_texture;
+uniform sampler2D depth_texture : hint_depth_texture;
 
 //https://jcgt.org/published/0007/03/04/
 //https://github.com/SebLague/Clouds/blob/master/Assets/Scripts/Clouds/Shaders/Clouds.shader
@@ -47,6 +51,7 @@ vec2 IntersectBox(vec3 box_min, vec3 box_max, vec3 ray_origin, vec3 inverse_ray)
 
 void vertex() {
 	// Called for every vertex the material is visible on.
+	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
 }
 
 float SampleDensityTexture(sampler3D sampler, vec3 uvw)
@@ -100,6 +105,7 @@ float Beer(float optical_depth)
 
 float LightContribution(vec3 ray_origin)
 {
+	
 	vec2 intersection = IntersectBox(bb_min, bb_max, ray_origin, 1.0 / light_direction);
 	float depth = intersection.y;
 	
@@ -110,9 +116,15 @@ float LightContribution(vec3 ray_origin)
 	
 	float density = 0.0;
 	
+	float exit_threshold = 6.0 / (falloff_light * dt);
+	
 	for ( int i = 0; i < n_samples; i++ )
 	{
 		density += Density(ray_origin);//exp(-falloff * );
+		if ( density > exit_threshold )
+		{
+			break;
+		}
 		ray_origin += ray_step;
 	}
 	float optical_depth = falloff_light * density * dt;
@@ -146,14 +158,13 @@ float Phase(float cosa)
 vec4 RayMarch(vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv)
 {
 	// environment colour
-	vec3 color = texture(screen_texture, screen_uv).rgb;// vec3(1.0);//vec3(0.0);
+	vec3 color = vec3(0.0);// texture(screen_texture, screen_uv).rgb;// vec3(1.0);//vec3(0.0);
 	
 	const int n_samples = 128;
 	
 	float dt = depth / float(n_samples-1);
 	
 	float noise_offset = dt * texture(blue_noise, fract(4.0 * screen_uv * TIME)).r;
-	
 	ray_origin += ray_direction * noise_offset;
 	
 	vec3 ray_step = ray_direction * dt;
@@ -171,14 +182,14 @@ vec4 RayMarch(vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv)
 		//float t = -a / z + b;
 		float density = Density(ray_origin);
 		
-		if ( density > 0.0 )
+		if ( density > 0.001 )
 		{
 			float light_transmittance = LightContribution(ray_origin);
 			
 			//color = light_color;// * 0.1 * light_depth;// LightContribution(ray_origin, light_depth);
 			light_energy += light_transmittance * transmittance * density;
 			transmittance *= exp(-falloff_color * density * dt);
-			if ( transmittance < 0.01 )
+			if ( transmittance < 0.1 )
 			{
 				transmittance = 0.0;
 				break;
@@ -196,43 +207,48 @@ vec4 RayMarch(vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv)
 	
 	//return vec4(light_color * light_energy,1.0 - transmittance);
 	//return vec4(light_energy, 0.0, 0.0, 1.0);
-	return vec4(color * transmittance + light_color * light_energy ,1.0 - transmittance);
+	return vec4(light_color * light_energy, 1.0 - transmittance);
 }
 
 void fragment() {
 	// Called for every pixel the material is visible on.
 	vec3 ray_origin = INV_VIEW_MATRIX[3].xyz;
-	
-	vec2 screen_uv = FRAGCOORD.xy / VIEWPORT_SIZE.xy;
+
 	//https://godotshaders.com/shader/volumetric-raymarched-animated-clouds-v2/
-	vec4 clip_pos = vec4(screen_uv * 2.0 - 1.0, FRAGCOORD.z, 1.0);
-	vec4 view_pos = INV_PROJECTION_MATRIX * clip_pos;
-	vec3 ray_direction_local = normalize(view_pos.xyz / view_pos.w);
+	float screen_depth = texture(depth_texture, SCREEN_UV).r;
+	vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, screen_depth);
+	
+	vec4 view = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
+	view.xyz /= view.w;
+    float linear_depth = -view.z;
+	vec3 ray_direction_local = normalize(view.xyz);
+	ray_direction_local = normalize(ray_direction_local);
 	vec3 ray_direction = mat3(INV_VIEW_MATRIX) * ray_direction_local;
 	
 	vec3 inverse_ray_direction = 1.0 / ray_direction;
 	
 	vec2 intersection = IntersectBox(bb_min, bb_max, ray_origin, inverse_ray_direction);
-
-	//if ( intersection.x <= 0.0 )
-	//{
-		//discard;
-	//}
-	
 	float t = intersection.x;
 	float depth = intersection.y;
+	depth = min(depth, linear_depth-intersection.x);
 
-	//intersection = IntersectBox(bb_min, bb_max, ray_origin + ray_direction * (t + 1.0), inverse_ray_direction);
+	if ( depth <= 0.0 || intersection.y <= 0.0 )
+	{
+		discard;
+	}
+	else
+	{
+		//intersection = IntersectBox(bb_min, bb_max, ray_origin + ray_direction * (t + 1.0), inverse_ray_direction);
 
-	vec4 light_result = RayMarch(
-		ray_origin + ray_direction * (t - 0.01), 
-		ray_direction, 
-		depth, 
-		screen_uv
-	); //vec3(value);
-	ALBEDO = light_result.rgb;//Density(ray_origin + ray_direction * t) * vec3(1.0);// light_result.rgb;
-	//ALPHA = clamp(light_result.a, 0.0, 1.0);
-	
+		vec4 light_result = RayMarch(
+			ray_origin + ray_direction * (t - 0.01), 
+			ray_direction, 
+			depth, 
+			SCREEN_UV
+		); //vec3(value);
+		ALBEDO =  light_result.rgb;//Density(ray_origin + ray_direction * t) * vec3(1.0);// light_result.rgb;
+		ALPHA = light_result.a;
+	}
 }
 
 //void light() {
