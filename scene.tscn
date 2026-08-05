@@ -17,8 +17,8 @@
 [sub_resource type="Texture3DRD" id="Texture3DRD_fy5k1"]
 
 [sub_resource type="Gradient" id="Gradient_xlvrw"]
-offsets = PackedFloat32Array(0, 0.074270554, 0.66843504, 1)
-colors = PackedColorArray(0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1)
+offsets = PackedFloat32Array(0, 0.13746631, 0.5283019, 0.9622642, 1)
+colors = PackedColorArray(0.6255969, 0.6255972, 0.6255971, 1, 0.9700638, 0.9700638, 0.9700638, 1, 0.85606676, 0.8560674, 0.85606724, 1, 0.39619625, 0.39619654, 0.39619645, 1, 0, 0, 0, 1)
 
 [sub_resource type="GradientTexture1D" id="GradientTexture1D_xlvrw"]
 gradient = SubResource("Gradient_xlvrw")
@@ -26,18 +26,18 @@ gradient = SubResource("Gradient_xlvrw")
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_nxogm"]
 render_priority = 0
 shader = ExtResource("3_3253y")
-shader_parameter/bb_min = Vector3(-10671.919, 663.05676, -9904.0205)
-shader_parameter/bb_max = Vector3(9328.081, 2663.0566, 10095.9795)
+shader_parameter/bb_min = Vector3(-10671.919, 1500, -9904.02)
+shader_parameter/bb_max = Vector3(9328.081, 4500, 10095.98)
 shader_parameter/light_direction = Vector3(0, 0.66379744, -0.7479124)
 shader_parameter/light_color = Color(1, 1, 1, 1)
 shader_parameter/falloff_light = 0.4
 shader_parameter/falloff_color = 0.4
 shader_parameter/darkness_threshold = 0.01
-shader_parameter/cloud_threshold = 0.48999998904752
-shader_parameter/cloud_threshold_delta = 0.51999998837696
+shader_parameter/cloud_threshold = 0.499999988824
+shader_parameter/cloud_threshold_delta = 0.999999977648
 shader_parameter/cloud_density = 0.3
-shader_parameter/cloud_scale = 2.0
-shader_parameter/fine_scale = 10.0
+shader_parameter/cloud_scale = 3.0
+shader_parameter/fine_scale = 12.0
 shader_parameter/fine_blend = 0.0999999977648
 shader_parameter/scattering_forward = 0.70000001043084
 shader_parameter/scattering_backward = 0.20000000298024
@@ -54,7 +54,7 @@ shader_parameter/blue_noise = ExtResource("2_y2354")
 
 [sub_resource type="BoxMesh" id="BoxMesh_4ttxi"]
 material = SubResource("ShaderMaterial_nxogm")
-size = Vector3(20000, 2000, 20000)
+size = Vector3(20000, 3000, 20000)
 
 [sub_resource type="QuadMesh" id="QuadMesh_73fnb"]
 material = SubResource("ShaderMaterial_nxogm")
@@ -69,6 +69,8 @@ sky_material = SubResource("ProceduralSkyMaterial_o4mie")
 [sub_resource type="Environment" id="Environment_4ttxi"]
 background_mode = 2
 sky = SubResource("Sky_0yjkd")
+
+[sub_resource type="Texture2DRD" id="Texture2DRD_5c1cw"]
 
 [sub_resource type="CompositorEffect" id="CompositorEffect_xlvrw"]
 resource_local_to_scene = false
@@ -143,7 +145,7 @@ shader_parameter/slice = 0.70999998413008
 [node name="Scene" type="Node3D" unique_id=1273189495]
 
 [node name="Clouds" type="MeshInstance3D" parent="." unique_id=520172682 node_paths=PackedStringArray("light")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -671.9193, 1663.0568, 95.979675)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -671.919, 3000, 95.98)
 visible = false
 mesh = SubResource("BoxMesh_4ttxi")
 script = ExtResource("4_u3cyc")

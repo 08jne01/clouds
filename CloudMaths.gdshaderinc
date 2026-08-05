@@ -85,7 +85,7 @@ float Density(vec3 position, float time)
 	vec3 delta = bb_max - bb_min;
 	float max_dim = cloud_scale * delta.y; //max(delta.x, max(delta.y,delta.z));
 	
-	vec3 uvw = (position - bb_min) / vec3(max_dim);
+	vec3 uvw = (position - bb_min) / vec3(delta);
 	vec3 uvw_world = position / vec3(max_dim);
 	
 	float coverage = texture(cloud_coverage, uvw_world.xz).b;
@@ -265,7 +265,7 @@ vec4 ProcessPixel(
 
 	//return texture(blue_noise, fract(4.0 * screen_uv * time));
 
-	//return vec4(normalize(ray_direction), 1.0);
+	//return vec4(vec3(linear_depth / 1000.0), 1.0);
 
 	vec4 pixel = CalculateCloud(
 		ray_origin,

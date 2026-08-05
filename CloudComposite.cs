@@ -4,22 +4,24 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-[Tool]
 public partial class CloudComposite : CompositorEffect
 {
     [Export] ShaderMaterial cloud_material;
 
-    Rid shader = new Rid();
-    Rid pipeline;
+    Rid cloud_shader = new Rid();
+    Rid cloud_pipeline;
+
+    Rid mix_shader = new Rid();
+    Rid mix_pipeline;
+
+
     Rid repeat_enabled_sampler;
     Rid repeat_disabled_sampler;
     Rid nearest_sampler;
 
-    Rid uniform_set0;
-    Rid uniform_set1;
-
-    RDShaderFile shader_file;
-    ShaderInclude shader_file_inc;
+    RDShaderFile cloud_shader_file;
+    ShaderInclude cloud_shader_file_inc;
+    RDShaderFile mix_shader_file;
 
     Mutex mutex = new Mutex();
 
@@ -29,6 +31,14 @@ public partial class CloudComposite : CompositorEffect
     Rid cloud_settings_buffer;
     byte[] cloud_settings_buffer_bytes = new byte[32 * 4];
 
+    [Export] Texture2Drd tex = new Texture2Drd();
+    
+    
+
+    uint cloud_buffer_x = 1920;
+    uint cloud_buffer_y = 1080;
+    Rid cloud_buffer;
+
     (string, ulong)[] dependencies = [
         ("res://Clouds.glsl", 0),
         ("res://CloudMaths.gdshaderinc", 0)
@@ -36,20 +46,87 @@ public partial class CloudComposite : CompositorEffect
 
     public CloudComposite()
     {
-        shader_file = GD.Load<RDShaderFile>(dependencies[0].Item1);
-        shader_file_inc = GD.Load<ShaderInclude>(dependencies[1].Item1);
-        shader_file.Changed += CompileShader;
-        shader_file_inc.Changed += CompileShader;
-        CompileShader();
+        var rd = RenderingServer.GetRenderingDevice();
+        var repeat_enabled_sampler_state = new RDSamplerState
+        {
+            RepeatU = RenderingDevice.SamplerRepeatMode.Repeat,
+            RepeatV = RenderingDevice.SamplerRepeatMode.Repeat,
+            RepeatW = RenderingDevice.SamplerRepeatMode.Repeat,
+            MinFilter = RenderingDevice.SamplerFilter.Linear,
+            MagFilter = RenderingDevice.SamplerFilter.Linear,
+            MipFilter = RenderingDevice.SamplerFilter.Linear,
+        };
+        repeat_enabled_sampler = rd.SamplerCreate(repeat_enabled_sampler_state);
+
+        var repeat_disabled_sampler_state = new RDSamplerState
+        {
+            RepeatU = RenderingDevice.SamplerRepeatMode.ClampToEdge,
+            RepeatV = RenderingDevice.SamplerRepeatMode.ClampToEdge,
+            RepeatW = RenderingDevice.SamplerRepeatMode.ClampToEdge,
+            MinFilter = RenderingDevice.SamplerFilter.Linear,
+            MagFilter = RenderingDevice.SamplerFilter.Linear,
+            MipFilter = RenderingDevice.SamplerFilter.Linear,
+        };
+        repeat_disabled_sampler = rd.SamplerCreate(repeat_disabled_sampler_state);
+
+        var nearest_sampler_state = new RDSamplerState
+        {
+            MinFilter = RenderingDevice.SamplerFilter.Nearest,
+            MagFilter = RenderingDevice.SamplerFilter.Nearest,
+            MipFilter = RenderingDevice.SamplerFilter.Nearest,
+        };
+        nearest_sampler = rd.SamplerCreate(nearest_sampler_state);
+
+        render_data_buffer      = rd.UniformBufferCreate((uint)render_data_buffer_bytes.Length);
+        cloud_settings_buffer   = rd.StorageBufferCreate((uint)cloud_settings_buffer_bytes.Length);
+
+
+        var texture_format = new RDTextureFormat
+        {
+            Format = RenderingDevice.DataFormat.R8G8B8A8Unorm,
+            TextureType = RenderingDevice.TextureType.Type2D,
+            Width = cloud_buffer_x,
+            Height = cloud_buffer_y,
+            Depth = 1,
+            ArrayLayers = 1,
+            Mipmaps = 1,
+            UsageBits = 
+                RenderingDevice.TextureUsageBits.StorageBit | 
+                RenderingDevice.TextureUsageBits.CanUpdateBit | 
+                RenderingDevice.TextureUsageBits.CanCopyToBit |
+                RenderingDevice.TextureUsageBits.SamplingBit |
+                RenderingDevice.TextureUsageBits.ColorAttachmentBit
+        };
+
+        cloud_buffer = rd.TextureCreate(texture_format, new RDTextureView());
+        rd.TextureClear(cloud_buffer, new Color(0.0f, 0.0f, 0.0f, 0.0f), 0, 1, 0, 1);
+
+        tex.TextureRdRid = cloud_buffer;
+
+
+        cloud_shader_file = GD.Load<RDShaderFile>("res://Clouds.glsl");
+        cloud_shader_file_inc = GD.Load<ShaderInclude>("res://CloudMaths.gdshaderinc");
+        mix_shader_file = GD.Load<RDShaderFile>("res://CloudMix.glsl");
+
+        cloud_shader_file.Changed += CompileShaders;
+        cloud_shader_file_inc.Changed += CompileShaders;
+        mix_shader_file.Changed += CompileShaders;
+
+        CompileShaders();
     }
 
     public override void _Notification(int what)
     {
         if (what == NotificationPredelete)
 		{
-			if (shader.IsValid)
+			if (cloud_shader.IsValid)
 			{
-				RenderingServer.GetRenderingDevice().FreeRid(shader);
+				RenderingServer.GetRenderingDevice().FreeRid(cloud_shader);
+			}
+
+            if (mix_shader.IsValid)
+			{
+				RenderingServer.GetRenderingDevice().FreeRid(mix_shader);
 			}
 		}
     }
@@ -76,58 +153,30 @@ public partial class CloudComposite : CompositorEffect
         GD.Print("Script Modified");
     }
 
-    void CompileShader()
+    void CompileShaders()
     {
         var rd = RenderingServer.GetRenderingDevice();
 
         GD.Print("Compiling Shader...");
 
-        //var shader_file = ResourceLoader.Load<RDShaderFile>(dependencies[0].Item1, null, ResourceLoader.CacheMode.Ignore);
-        var shader_byte_code = shader_file.GetSpirV();
-
-        if ( shader.IsValid )
+        if ( cloud_shader.IsValid )
         {
-            rd.FreeRid(shader);
+            rd.FreeRid(cloud_shader);
         }
-        else
-        {   // Only done first time
-            var repeat_enabled_sampler_state = new RDSamplerState
-            {
-                RepeatU = RenderingDevice.SamplerRepeatMode.Repeat,
-                RepeatV = RenderingDevice.SamplerRepeatMode.Repeat,
-                RepeatW = RenderingDevice.SamplerRepeatMode.Repeat,
-                MinFilter = RenderingDevice.SamplerFilter.Linear,
-                MagFilter = RenderingDevice.SamplerFilter.Linear,
-                MipFilter = RenderingDevice.SamplerFilter.Linear,
-            };
-            repeat_enabled_sampler = rd.SamplerCreate(repeat_enabled_sampler_state);
 
-            var repeat_disabled_sampler_state = new RDSamplerState
-            {
-                RepeatU = RenderingDevice.SamplerRepeatMode.ClampToEdge,
-                RepeatV = RenderingDevice.SamplerRepeatMode.ClampToEdge,
-                RepeatW = RenderingDevice.SamplerRepeatMode.ClampToEdge,
-                MinFilter = RenderingDevice.SamplerFilter.Linear,
-                MagFilter = RenderingDevice.SamplerFilter.Linear,
-                MipFilter = RenderingDevice.SamplerFilter.Linear,
-            };
-            repeat_disabled_sampler = rd.SamplerCreate(repeat_disabled_sampler_state);
-
-            var nearest_sampler_state = new RDSamplerState
-            {
-                MinFilter = RenderingDevice.SamplerFilter.Nearest,
-                MagFilter = RenderingDevice.SamplerFilter.Nearest,
-                MipFilter = RenderingDevice.SamplerFilter.Nearest,
-            };
-            nearest_sampler = rd.SamplerCreate(nearest_sampler_state);
-
-            render_data_buffer      = rd.UniformBufferCreate((uint)render_data_buffer_bytes.Length);
-            cloud_settings_buffer   = rd.StorageBufferCreate((uint)cloud_settings_buffer_bytes.Length);
+        if ( mix_shader.IsValid )
+        {
+            rd.FreeRid(mix_shader);
         }
 
         // Done regardless
-        shader = rd.ShaderCreateFromSpirV(shader_byte_code);
-        pipeline = rd.ComputePipelineCreate(shader);
+        var cloud_shader_byte_code = cloud_shader_file.GetSpirV();
+        cloud_shader = rd.ShaderCreateFromSpirV(cloud_shader_byte_code);
+        cloud_pipeline = rd.ComputePipelineCreate(cloud_shader);
+
+        var mix_shader_byte_code = mix_shader_file.GetSpirV();
+        mix_shader = rd.ShaderCreateFromSpirV(mix_shader_byte_code);
+        mix_pipeline = rd.ComputePipelineCreate(mix_shader);
     }
 
 
@@ -183,7 +232,7 @@ public partial class CloudComposite : CompositorEffect
         ];
     }
 
-    public Rid CreateUniformSet0(
+    public Rid CreateUniformSetMixPass0(
         RenderSceneBuffersRD render_scene_buffers
     )
     {
@@ -193,6 +242,32 @@ public partial class CloudComposite : CompositorEffect
             UniformType = RenderingDevice.UniformType.Image  
         };
         color_uniform.AddId(render_scene_buffers.GetColorLayer(0));
+
+        var cloud_buffer_uniform = new RDUniform
+        {
+            Binding = 1,
+            UniformType = RenderingDevice.UniformType.SamplerWithTexture  
+        };
+        cloud_buffer_uniform.AddId(repeat_disabled_sampler);
+        cloud_buffer_uniform.AddId(cloud_buffer);
+
+        return UniformSetCacheRD.GetCache(mix_shader, 0, [
+            color_uniform,
+            cloud_buffer_uniform
+        ]);
+    }
+
+    public Rid CreateUniformSetCloudPass0(
+        RenderSceneBuffersRD render_scene_buffers
+    )
+    {
+        var cloud_buffer_uniform = new RDUniform
+        {
+            Binding = 0,
+            UniformType = RenderingDevice.UniformType.Image  
+        };
+        cloud_buffer_uniform.AddId(cloud_buffer);
+
 
         var render_data_buffer_uniform = new RDUniform
         {
@@ -206,11 +281,11 @@ public partial class CloudComposite : CompositorEffect
             Binding = 2,
             UniformType = RenderingDevice.UniformType.SamplerWithTexture  
         };
-        depth_uniform.AddId(repeat_enabled_sampler);
+        depth_uniform.AddId(repeat_disabled_sampler);
         depth_uniform.AddId(render_scene_buffers.GetDepthLayer(0));
 
-        return UniformSetCacheRD.GetCache(shader, 0, [
-            color_uniform,
+        return UniformSetCacheRD.GetCache(cloud_shader, 0, [
+            cloud_buffer_uniform,
             render_data_buffer_uniform,
             depth_uniform
         ]);
@@ -230,7 +305,7 @@ public partial class CloudComposite : CompositorEffect
         return uniform;
     }
 
-    public Rid CreateUniformSet1()
+    public Rid CreateUniformSetCloudPass1()
     {
         // Cloud Settings
         int settings_size = 0;
@@ -344,7 +419,7 @@ public partial class CloudComposite : CompositorEffect
 
         var rd = RenderingServer.GetRenderingDevice(); 
 
-        return UniformSetCacheRD.GetCache(shader, 1, [
+        return UniformSetCacheRD.GetCache(cloud_shader, 1, [
             cloud_settings_uniform,
             CreateTextureUniform(1, "density_texture",      repeat_enabled_sampler),
             CreateTextureUniform(2, "fine_density_texture", repeat_enabled_sampler),
@@ -367,12 +442,11 @@ public partial class CloudComposite : CompositorEffect
 
         Vector2I buffer_size = render_scene_buffers.GetInternalSize();
 
-        byte[] push_constants = new byte[256];
+        byte[] push_constants = new byte[128];
         int constants_size = 0;
-
-        constants_size = CopyValue(push_constants, constants_size, buffer_size.X);
-        constants_size = CopyValue(push_constants, constants_size, buffer_size.Y);
         constants_size = CopyValue(push_constants, constants_size, (float)Time.GetTicksMsec() / 1000.0f);
+        constants_size = CopyValue(push_constants, constants_size, 0.0f);
+        constants_size = CopyValue(push_constants, constants_size, 0);
         constants_size = CopyValue(push_constants, constants_size, 0);
 
         int render_data_buffer_size = 0;
@@ -392,8 +466,8 @@ public partial class CloudComposite : CompositorEffect
         Debug.Assert(render_data_buffer_size % 4 == 0);
 
         
-        var uniform_set0 = CreateUniformSet0(render_scene_buffers);
-        var uniform_set1 = CreateUniformSet1();
+        var cloud_pass_uniform_set0 = CreateUniformSetCloudPass0(render_scene_buffers);
+        var cloud_pass_uniform_set1 = CreateUniformSetCloudPass1();
 
         
         var rd = RenderingServer.GetRenderingDevice();
@@ -401,19 +475,45 @@ public partial class CloudComposite : CompositorEffect
         rd.BufferUpdate(render_data_buffer, 0, (uint)render_data_buffer_bytes.Length, render_data_buffer_bytes);
         rd.BufferUpdate(cloud_settings_buffer, 0, (uint)cloud_settings_buffer_bytes.Length, cloud_settings_buffer_bytes);
 
-        var compute_list = rd.ComputeListBegin();
-        rd.ComputeListBindComputePipeline(compute_list, pipeline);
-        rd.ComputeListSetPushConstant(compute_list, push_constants, (uint)constants_size);
-        rd.ComputeListBindUniformSet(compute_list, uniform_set0, 0);
-        rd.ComputeListBindUniformSet(compute_list, uniform_set1, 1);
+        var cloud_pass = rd.ComputeListBegin();
+        rd.ComputeListBindComputePipeline(cloud_pass, cloud_pipeline);
+        rd.ComputeListSetPushConstant(cloud_pass, push_constants, (uint)constants_size);
+        rd.ComputeListBindUniformSet(cloud_pass, cloud_pass_uniform_set0, 0);
+        rd.ComputeListBindUniformSet(cloud_pass, cloud_pass_uniform_set1, 1);
         
-        int dispatch_width = (buffer_size.X / 8) + (buffer_size.X % 8 == 0 ? 0 : 8); 
-        int dispatch_height = (buffer_size.Y / 8) + (buffer_size.Y % 8 == 0 ? 0 : 8); 
-        
-        //GD.Print($"{buffer_size} - {dispatch_width} x {dispatch_height}");
+        // half frame buffer (divided by 8 too for compute)
+        int dispatch_width = buffer_size.X / 16; 
+        int dispatch_height = buffer_size.Y / 16; 
 
-        rd.ComputeListDispatch(compute_list, (uint)dispatch_width, (uint)dispatch_height, 1);
+        int cloud_x = dispatch_width * 8;
+        int cloud_y = dispatch_height * 8;
+
+        //int dispatch_width = (buffer_size.X / 8) + (buffer_size.X % 8 == 0 ? 0 : 8); 
+        //int dispatch_height = (buffer_size.Y / 8) + (buffer_size.Y % 8 == 0 ? 0 : 8); 
+
+        rd.ComputeListDispatch(cloud_pass, (uint)dispatch_width, (uint)dispatch_height, 1);
         rd.ComputeListEnd();
+
+        var mix_pass_uniform_set0 = CreateUniformSetMixPass0(render_scene_buffers);
+
+        constants_size = 0;
+        constants_size = CopyValue(push_constants, constants_size, buffer_size.X);
+        constants_size = CopyValue(push_constants, constants_size, buffer_size.Y);
+        constants_size = CopyValue(push_constants, constants_size, (float)cloud_x / (float)(cloud_buffer_x-1));
+        constants_size = CopyValue(push_constants, constants_size, (float)cloud_y / (float)(cloud_buffer_y-1));
+
+        var mix_pass = rd.ComputeListBegin();
+        rd.ComputeListBindComputePipeline(mix_pass, mix_pipeline);
+        rd.ComputeListSetPushConstant(mix_pass, push_constants, (uint)constants_size);
+        rd.ComputeListBindUniformSet(mix_pass, mix_pass_uniform_set0, 0);
+        
+        int mix_dispatch_width = (buffer_size.X / 8) + (buffer_size.X % 8 == 0 ? 0 : 8); 
+        int mix_dispatch_height = (buffer_size.Y / 8) + (buffer_size.Y % 8 == 0 ? 0 : 8); 
+
+        rd.ComputeListDispatch(mix_pass, (uint)mix_dispatch_width, (uint)mix_dispatch_height, 1);
+        rd.ComputeListEnd();
+
+
 
     }
 }
