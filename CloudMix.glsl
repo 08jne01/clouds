@@ -37,7 +37,7 @@ void main()
     ));
 
     // imageStore(color_image, index, 
-    //     texture(density_texture, vec3(screen_uv, 0.0))
+    //     vec4(cloud_pixel.rgb, 1.0)
     // );
 
     

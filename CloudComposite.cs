@@ -25,24 +25,34 @@ public partial class CloudComposite : CompositorEffect
 
     Mutex mutex = new Mutex();
 
+    int offset = 0;
+
     Rid render_data_buffer;
-    byte[] render_data_buffer_bytes = new byte[128];
+    byte[] render_data_buffer_bytes = new byte[512];
 
     Rid cloud_settings_buffer;
     byte[] cloud_settings_buffer_bytes = new byte[32 * 4];
 
     [Export] Texture2Drd tex = new Texture2Drd();
+
+    [Export] bool render_new = true;
     
     
 
     uint cloud_buffer_x = 1920;
     uint cloud_buffer_y = 1080;
-    Rid cloud_buffer;
+    Rid cloud_buffer; // clean cloud (with interlacing)
+    Rid prev_cloud_buffer; // prev
+    Rid cloud_display_buffer; // has reprojection
+    Rid cloud_depth_buffer; 
 
     (string, ulong)[] dependencies = [
         ("res://Clouds.glsl", 0),
         ("res://CloudMaths.gdshaderinc", 0)
     ];
+
+    Transform3D? prev_inv_camera_transform;
+    Projection? prev_camera_projection;
 
     public CloudComposite()
     {
@@ -94,12 +104,20 @@ public partial class CloudComposite : CompositorEffect
                 RenderingDevice.TextureUsageBits.StorageBit | 
                 RenderingDevice.TextureUsageBits.CanUpdateBit | 
                 RenderingDevice.TextureUsageBits.CanCopyToBit |
+                RenderingDevice.TextureUsageBits.CanCopyFromBit |
                 RenderingDevice.TextureUsageBits.SamplingBit |
                 RenderingDevice.TextureUsageBits.ColorAttachmentBit
         };
 
         cloud_buffer = rd.TextureCreate(texture_format, new RDTextureView());
+        prev_cloud_buffer = rd.TextureCreate(texture_format, new RDTextureView());
+        cloud_display_buffer = rd.TextureCreate(texture_format, new RDTextureView());
+        cloud_depth_buffer = rd.TextureCreate(texture_format, new RDTextureView());
+
         rd.TextureClear(cloud_buffer, new Color(0.0f, 0.0f, 0.0f, 0.0f), 0, 1, 0, 1);
+        rd.TextureClear(prev_cloud_buffer, new Color(0.0f, 0.0f, 0.0f, 0.0f), 0, 1, 0, 1);
+        rd.TextureClear(cloud_display_buffer, new Color(0.0f, 0.0f, 0.0f, 0.0f), 0, 1, 0, 1);
+        rd.TextureClear(cloud_depth_buffer, new Color(0.0f, 0.0f, 0.0f, 0.0f), 0, 1, 0, 1);
 
         tex.TextureRdRid = cloud_buffer;
 
@@ -249,7 +267,7 @@ public partial class CloudComposite : CompositorEffect
             UniformType = RenderingDevice.UniformType.SamplerWithTexture  
         };
         cloud_buffer_uniform.AddId(repeat_disabled_sampler);
-        cloud_buffer_uniform.AddId(cloud_buffer);
+        cloud_buffer_uniform.AddId(cloud_display_buffer);
 
         return UniformSetCacheRD.GetCache(mix_shader, 0, [
             color_uniform,
@@ -267,6 +285,28 @@ public partial class CloudComposite : CompositorEffect
             UniformType = RenderingDevice.UniformType.Image  
         };
         cloud_buffer_uniform.AddId(cloud_buffer);
+
+        var prev_cloud_buffer_uniform = new RDUniform
+        {
+            Binding = 3,
+            UniformType = RenderingDevice.UniformType.Image  
+        };
+        //prev_cloud_buffer_uniform.AddId(repeat_disabled_sampler);
+        prev_cloud_buffer_uniform.AddId(prev_cloud_buffer);
+
+        var cloud_display_buffer_uniform = new RDUniform
+        {
+            Binding = 4,
+            UniformType = RenderingDevice.UniformType.Image  
+        };
+        cloud_display_buffer_uniform.AddId(cloud_display_buffer);
+
+        var cloud_depth_buffer_uniform = new RDUniform
+        {
+            Binding = 5,
+            UniformType = RenderingDevice.UniformType.Image  
+        };
+        cloud_depth_buffer_uniform.AddId(cloud_depth_buffer);
 
 
         var render_data_buffer_uniform = new RDUniform
@@ -287,7 +327,10 @@ public partial class CloudComposite : CompositorEffect
         return UniformSetCacheRD.GetCache(cloud_shader, 0, [
             cloud_buffer_uniform,
             render_data_buffer_uniform,
-            depth_uniform
+            depth_uniform,
+            prev_cloud_buffer_uniform,
+            cloud_display_buffer_uniform,
+            cloud_depth_buffer_uniform
         ]);
     }
 
@@ -442,26 +485,80 @@ public partial class CloudComposite : CompositorEffect
 
         Vector2I buffer_size = render_scene_buffers.GetInternalSize();
 
+        Vector2I[] offset_vectors = [
+            new Vector2I(0,0),
+            new Vector2I(1,1),
+            new Vector2I(1,0),
+            new Vector2I(0,1),
+        ];
+
+        Vector2I pixel_offset = offset_vectors[offset];
+
+        // half frame buffer (divided by 8 too for compute)
+        // half again for reprojection
+        int dispatch_width = buffer_size.X / 32; 
+        int dispatch_height = buffer_size.Y / 32; 
+
+        int cloud_x = 2 * dispatch_width * 8;
+        int cloud_y = 2 * dispatch_height * 8;
+
+        Vector2 cloud_size = new Vector2(
+            (float)cloud_x / (float)(cloud_buffer_x-1),
+            (float)cloud_y / (float)(cloud_buffer_y-1)
+        );
+
         byte[] push_constants = new byte[128];
         int constants_size = 0;
         constants_size = CopyValue(push_constants, constants_size, (float)Time.GetTicksMsec() / 1000.0f);
         constants_size = CopyValue(push_constants, constants_size, 0.0f);
-        constants_size = CopyValue(push_constants, constants_size, 0);
-        constants_size = CopyValue(push_constants, constants_size, 0);
+        constants_size = CopyValue(push_constants, constants_size, pixel_offset.X);
+        constants_size = CopyValue(push_constants, constants_size, pixel_offset.Y);
+        constants_size = CopyValue(push_constants, constants_size, cloud_size.X);
+        constants_size = CopyValue(push_constants, constants_size, cloud_size.Y);
+        constants_size = CopyValue(push_constants, constants_size, 0.0f);
+        constants_size = CopyValue(push_constants, constants_size, 0.0f);
 
         int render_data_buffer_size = 0;
 
-        float[] inv_view_matrix = Matrix(render_scene_data.GetCamTransform());
-        float[] inv_proj_matrix = Matrix(render_scene_data.GetCamProjection().Inverse());
+        Transform3D camera_transform = render_scene_data.GetCamTransform();
+        Transform3D inv_camera_transform = camera_transform.AffineInverse();
+        Projection camera_projection = render_scene_data.GetCamProjection();
+        Projection inv_camera_projection = camera_projection.Inverse();
+
+        if ( prev_camera_projection == null )
+        {
+            prev_camera_projection = camera_projection;
+        }
+
+        if ( prev_inv_camera_transform == null )
+        {
+            prev_inv_camera_transform = inv_camera_transform;
+        }
 
         render_data_buffer_size = CopySpanValues<float>(
-            render_data_buffer_bytes, render_data_buffer_size, inv_view_matrix
+            render_data_buffer_bytes, render_data_buffer_size, Matrix(camera_transform) // inv view matrix
         );
 
         render_data_buffer_size = CopySpanValues<float>(
-            render_data_buffer_bytes, render_data_buffer_size, inv_proj_matrix
+            render_data_buffer_bytes, render_data_buffer_size, Matrix(inv_camera_projection) // inv proj mat
         );
 
+        render_data_buffer_size = CopySpanValues<float>(
+            render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_inv_camera_transform.Value) // prev inv view matrix
+        );
+
+        render_data_buffer_size = CopySpanValues<float>(
+            render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_camera_projection.Value) // prev inv proj mat
+        );
+
+
+        if ( render_new )
+        {
+            // copy for next frame
+            prev_inv_camera_transform = inv_camera_transform;
+            prev_camera_projection = camera_projection;
+        }
+        
         Debug.Assert(constants_size % 4 == 0);
         Debug.Assert(render_data_buffer_size % 4 == 0);
 
@@ -475,22 +572,15 @@ public partial class CloudComposite : CompositorEffect
         rd.BufferUpdate(render_data_buffer, 0, (uint)render_data_buffer_bytes.Length, render_data_buffer_bytes);
         rd.BufferUpdate(cloud_settings_buffer, 0, (uint)cloud_settings_buffer_bytes.Length, cloud_settings_buffer_bytes);
 
+        //int dispatch_width = (buffer_size.X / 8) + (buffer_size.X % 8 == 0 ? 0 : 8); 
+        //int dispatch_height = (buffer_size.Y / 8) + (buffer_size.Y % 8 == 0 ? 0 : 8); 
+
+        
         var cloud_pass = rd.ComputeListBegin();
         rd.ComputeListBindComputePipeline(cloud_pass, cloud_pipeline);
         rd.ComputeListSetPushConstant(cloud_pass, push_constants, (uint)constants_size);
         rd.ComputeListBindUniformSet(cloud_pass, cloud_pass_uniform_set0, 0);
         rd.ComputeListBindUniformSet(cloud_pass, cloud_pass_uniform_set1, 1);
-        
-        // half frame buffer (divided by 8 too for compute)
-        int dispatch_width = buffer_size.X / 16; 
-        int dispatch_height = buffer_size.Y / 16; 
-
-        int cloud_x = dispatch_width * 8;
-        int cloud_y = dispatch_height * 8;
-
-        //int dispatch_width = (buffer_size.X / 8) + (buffer_size.X % 8 == 0 ? 0 : 8); 
-        //int dispatch_height = (buffer_size.Y / 8) + (buffer_size.Y % 8 == 0 ? 0 : 8); 
-
         rd.ComputeListDispatch(cloud_pass, (uint)dispatch_width, (uint)dispatch_height, 1);
         rd.ComputeListEnd();
 
@@ -499,8 +589,8 @@ public partial class CloudComposite : CompositorEffect
         constants_size = 0;
         constants_size = CopyValue(push_constants, constants_size, buffer_size.X);
         constants_size = CopyValue(push_constants, constants_size, buffer_size.Y);
-        constants_size = CopyValue(push_constants, constants_size, (float)cloud_x / (float)(cloud_buffer_x-1));
-        constants_size = CopyValue(push_constants, constants_size, (float)cloud_y / (float)(cloud_buffer_y-1));
+        constants_size = CopyValue(push_constants, constants_size, cloud_size.X);
+        constants_size = CopyValue(push_constants, constants_size, cloud_size.Y);
 
         var mix_pass = rd.ComputeListBegin();
         rd.ComputeListBindComputePipeline(mix_pass, mix_pipeline);
@@ -513,7 +603,11 @@ public partial class CloudComposite : CompositorEffect
         rd.ComputeListDispatch(mix_pass, (uint)mix_dispatch_width, (uint)mix_dispatch_height, 1);
         rd.ComputeListEnd();
 
+        offset = (offset + 1) % 4;
 
-
+        if ( render_new )
+        {
+            rd.TextureCopy(cloud_display_buffer, prev_cloud_buffer, Vector3.Zero, Vector3.Zero, new Vector3(cloud_buffer_x, cloud_buffer_y, 1), 0, 0, 0, 0);
+        }
     }
 }

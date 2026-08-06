@@ -11,7 +11,9 @@ void vertex() {
 }
 
 void fragment() {
+	float proj_depth = 10000.0;
 	vec4 pixel = ProcessPixel(
+		proj_depth,
 		INV_VIEW_MATRIX,
 		INV_PROJECTION_MATRIX,
 		SCREEN_UV,

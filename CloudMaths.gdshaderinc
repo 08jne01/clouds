@@ -93,7 +93,10 @@ float Density(vec3 position, float time)
 	float course_density = SampleDensityTexture(texture(density_texture, uvw_world));
 	float fine_density = SampleDensityTexture(texture(fine_density_texture, uvw_world * fine_scale));
 	
-	float density = course_density * (1.0 - fine_blend) + fine_density * fine_blend;
+	//float density = course_density * (1.0 - fine_blend) + fine_density * fine_blend;
+	
+	float density = course_density - mix(0.0, 1.0 - fine_density, course_density * fine_blend);
+	
 	density *= texture(height_texture, vec2(uvw.y, 0.0)).r;
 	//density *= coverage;
 	
@@ -130,7 +133,7 @@ float LightContribution(vec3 ray_origin, float time)
 	float exit_threshold = 6.0 / (falloff_light * dt);
 	
 	for ( int i = 0; i < n_samples; i++ )
-	{
+	{			
 		density += Density(ray_origin, time);//exp(-falloff * );
 		if ( density > exit_threshold )
 		{
@@ -166,12 +169,18 @@ float Phase(float cosa)
 	return scattering_omnidirectional + directional * scattering_directional;
 }
 
-vec4 RayMarch(vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv, float time)
+vec2 Random(vec2 uv)
+{
+	return vec2(fract(sin(dot(uv.xy,
+		vec2(12.9898,78.233))) * 43758.5453123));
+}
+
+vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv, float time)
 {
 	// environment colour
 	vec3 color = vec3(0.0);// texture(screen_texture, screen_uv).rgb;// vec3(1.0);//vec3(0.0);
 	
-	const int n_samples = 256;
+	const int n_samples = 64;
 	
 	float dt = depth / float(n_samples-1);
 	
@@ -187,6 +196,7 @@ vec4 RayMarch(vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv, 
 	float phase = Phase(cosa);// max(, 0.0);
 	
 	float transmittance = 1.0;
+	float t = 0.0;
 	
 	for ( int i = 0; i < n_samples; i++ )
 	{
@@ -200,13 +210,20 @@ vec4 RayMarch(vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv, 
 			//color = light_color;// * 0.1 * light_depth;// LightContribution(ray_origin, light_depth);
 			light_energy += light_transmittance * transmittance * density;
 			transmittance *= exp(-falloff_color * density * dt);
-			if ( transmittance < 0.1 )
+
+			if ( transmittance < 0.99 )
+			{
+				proj_depth = min(proj_depth, t);
+			}
+
+			if ( transmittance < 0.001 )
 			{
 				transmittance = 0.0;
 				break;
 			}
 		}
 		ray_origin += ray_step;
+		t += dt;
 	}
 	
 	light_energy *= phase * dt * 1.0;
@@ -214,6 +231,7 @@ vec4 RayMarch(vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv, 
 }
 
 vec4 CalculateCloud(
+	inout float proj_depth, // projected depth
 	vec3 ray_origin,
 	vec3 ray_direction,
 	vec2 screen_uv,
@@ -227,21 +245,28 @@ vec4 CalculateCloud(
 	float depth = intersection.y;
 	depth = min(depth, pixel_depth-intersection.x);
 
+	proj_depth = depth + t;
+
 	if ( depth <= 0.0 || intersection.y <= 0.0 )
 	{
 		return vec4(0.0);
 	}
 	
-	return RayMarch(
+	vec4 pixel = RayMarch(
+		proj_depth,
 		ray_origin + ray_direction * (t - 0.01), 
 		ray_direction, 
 		depth, 
 		screen_uv,
 		time
 	);
+
+	proj_depth += t;
+	return pixel;
 }
 
 vec4 ProcessPixel(
+	inout float proj_depth,
 	mat4 inv_view_mat,
 	mat4 inv_proj_mat,
 	vec2 screen_uv,
@@ -267,12 +292,14 @@ vec4 ProcessPixel(
 
 	//return vec4(vec3(linear_depth / 1000.0), 1.0);
 
+
 	vec4 pixel = CalculateCloud(
+		proj_depth,
 		ray_origin,
 		ray_direction,
 		screen_uv,
 		linear_depth,
-		time
+		1.0
 	);
 
 	return pixel;
