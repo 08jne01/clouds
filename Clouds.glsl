@@ -119,7 +119,8 @@ void main()
 
         // }
 
-        if ( 
+        if (
+            proj_depth < 0.0 ||
             old_index.x < 0 || 
             old_index.y < 0 ||
             old_index.x >= (max_size.x) ||

@@ -184,9 +184,6 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 	
 	float dt = depth / float(n_samples-1);
 	
-	float noise_offset = dt * texture(blue_noise, fract(4.0 * screen_uv * time)).r;
-	ray_origin += ray_direction * noise_offset;
-	
 	vec3 ray_step = ray_direction * dt;
 	
 	
@@ -201,11 +198,15 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 	for ( int i = 0; i < n_samples; i++ )
 	{
 		//float t = -a / z + b;
-		float density = Density(ray_origin, time);
+
+		float noise_offset = dt * texture(blue_noise, fract(4.0 * screen_uv * time + t)).r;
+		vec3 ray_position = ray_origin + ray_direction * (t + noise_offset);
+
+		float density = Density(ray_position, time);
 		
 		if ( density > 0.001 )
 		{
-			float light_transmittance = LightContribution(ray_origin, time);
+			float light_transmittance = LightContribution(ray_position, time);
 			
 			//color = light_color;// * 0.1 * light_depth;// LightContribution(ray_origin, light_depth);
 			light_energy += light_transmittance * transmittance * density;
@@ -222,7 +223,7 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 				break;
 			}
 		}
-		ray_origin += ray_step;
+		//ray_origin += ray_step;
 		t += dt;
 	}
 	
@@ -245,10 +246,9 @@ vec4 CalculateCloud(
 	float depth = intersection.y;
 	depth = min(depth, pixel_depth-intersection.x);
 
-	proj_depth = depth + t;
-
 	if ( depth <= 0.0 || intersection.y <= 0.0 )
 	{
+		proj_depth = -1.0;
 		return vec4(0.0);
 	}
 	
@@ -299,7 +299,7 @@ vec4 ProcessPixel(
 		ray_direction,
 		screen_uv,
 		linear_depth,
-		1.0
+		time
 	);
 
 	return pixel;
