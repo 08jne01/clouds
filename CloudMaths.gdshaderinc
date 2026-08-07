@@ -48,6 +48,7 @@ LAYOUT(set = 1, binding = 2, uniform sampler3D fine_density_texture) HINT(repeat
 LAYOUT(set = 1, binding = 3, uniform sampler2D height_texture)       HINT(repeat_disable);
 LAYOUT(set = 1, binding = 4, uniform sampler2D cloud_coverage)       HINT(repeat_enable);
 LAYOUT(set = 1, binding = 5, uniform sampler2D blue_noise)           HINT(filter_nearest);
+//LAYOUT(set = 1, binding = 6, uniform sampler3D curl_noise)           HINT(repeat_enable);
 
 //https://jcgt.org/published/0007/03/04/
 //https://github.com/SebLague/Clouds/blob/master/Assets/Scripts/Clouds/Shaders/Clouds.shader
@@ -93,18 +94,19 @@ float Density(vec3 position, float time)
 	float coarse_density = 
 		0.5 * (texture(density_texture, uvw_world * 0.1).r) +
 		.25 * (texture(density_texture, uvw_world * 0.25).g) +
-		0.125 * (texture(density_texture, uvw_world * 2.0).b);// +
-		//0.0625 * (texture(density_texture, uvw_world * 5.0).a);
+		0.125 * (texture(density_texture, uvw_world * 2.0).b) +
+		0.0625 * (texture(density_texture, uvw_world * 5.0).a);
 	coarse_density /= 0.9375;
 
 
-	float fine_density = texture(fine_density_texture, uvw_world * fine_scale).r; //SampleDensityTexture();
+	float fine_density = SampleDensityTexture(texture(fine_density_texture, uvw_world * fine_scale)); //;
 	
 	//float density = course_density * (1.0 - fine_blend) + fine_density * fine_blend;
 	
 	float density = coarse_density - mix(0.0, 1.0 - fine_density, coarse_density * fine_blend);
 	
-	density *= texture(height_texture, vec2(uvw.y, 0.0)).r;
+	float height_density = texture(height_texture, vec2(uvw.y, 0.0)).r;
+	density *= height_density * height_density;
 	density *= coverage;
 	
 	float cloud_t = clamp((density - cloud_threshold) / cloud_threshold_delta, 0.0, 1.0);
@@ -219,7 +221,7 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 			light_energy += light_transmittance * transmittance * density;
 			transmittance *= exp(-falloff_color * density * dt);
 
-			if ( transmittance < 0.8 )
+			if ( transmittance < 1.0 )
 			{
 				proj_depth = min(proj_depth, t);
 			}
@@ -270,7 +272,15 @@ vec4 CalculateCloud(
 		time
 	);
 
-	proj_depth += t;
+	if ( abs(proj_depth-depth) < 0.1 )
+	{
+		proj_depth = -1.0;
+	}
+	else
+	{
+		proj_depth += t;
+	}
+
 	return pixel;
 }
 

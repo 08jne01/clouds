@@ -11,7 +11,7 @@
 [ext_resource type="Shader" uid="uid://b340kxrht7joa" path="res://Display3DTexture.gdshader" id="8_xlvrw"]
 
 [sub_resource type="Gradient" id="Gradient_0shie"]
-colors = PackedColorArray(0.75398386, 0.7539839, 0.7539834, 1, 0.95596343, 0.95596343, 0.9559632, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_xwwmg"]
 noise_type = 2
@@ -29,12 +29,12 @@ seamless = true
 
 [sub_resource type="Texture3DRD" id="Texture3DRD_5juve"]
 
-[sub_resource type="Curve" id="Curve_n23du"]
-_data = [Vector2(0, 0.90000004), 0.0, 0.0, 0, 0, Vector2(0.056074765, 1), 0.07731204, 0.07731204, 0, 0, Vector2(0.19859813, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.6589595), 0.0, 0.0, 0, 0]
-point_count = 4
+[sub_resource type="Curve" id="Curve_5juve"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.12015504, 1), 0.0, 0.0, 0, 0, Vector2(0.2248062, 1), 0.0, 0.0, 0, 0, Vector2(0.5155039, 0.7894738), -1.7458647, -1.7458647, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 5
 
-[sub_resource type="CurveTexture" id="CurveTexture_0shie"]
-curve = SubResource("Curve_n23du")
+[sub_resource type="CurveTexture" id="CurveTexture_73fnb"]
+curve = SubResource("Curve_5juve")
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_nxogm"]
 render_priority = 0
@@ -46,12 +46,12 @@ shader_parameter/light_color = Color(1, 1, 1, 1)
 shader_parameter/falloff_light = 0.4
 shader_parameter/falloff_color = 0.4
 shader_parameter/darkness_threshold = 0.01
-shader_parameter/cloud_threshold = 0.70999998413008
+shader_parameter/cloud_threshold = 0.86999998055376
 shader_parameter/cloud_threshold_delta = 0.999999977648
 shader_parameter/cloud_density = 0.5
 shader_parameter/cloud_scale = 1.0
-shader_parameter/fine_scale = 2.0000000298024
-shader_parameter/fine_blend = 0.03999999910592
+shader_parameter/fine_scale = 3.90000005811468
+shader_parameter/fine_blend = 0.2999999932944
 shader_parameter/scattering_forward = 0.70000001043084
 shader_parameter/scattering_backward = 0.20000000298024
 shader_parameter/scattering_omnidirectional = 0.70000001043084
@@ -61,7 +61,7 @@ shader_parameter/padding0 = 0.0
 shader_parameter/padding1 = 0.0
 shader_parameter/density_texture = SubResource("Texture3DRD_73fnb")
 shader_parameter/fine_density_texture = SubResource("Texture3DRD_5juve")
-shader_parameter/height_texture = SubResource("CurveTexture_0shie")
+shader_parameter/height_texture = SubResource("CurveTexture_73fnb")
 shader_parameter/cloud_coverage = SubResource("NoiseTexture2D_rixys")
 shader_parameter/blue_noise = ExtResource("2_y2354")
 
@@ -167,7 +167,6 @@ light = NodePath("../DirectionalLight3D")
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1712109579]
 transform = Transform3D(1, 0, 0, 0, 0.80522037, -0.5929757, 0, 0.5929757, 0.80522037, 0, -2.2618675, 0)
 cull_mask = 1
-fov = 45.0
 near = 0.1
 far = 40000.0
 
