@@ -212,7 +212,7 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 			light_energy += light_transmittance * transmittance * density;
 			transmittance *= exp(-falloff_color * density * dt);
 
-			if ( transmittance < 0.99 )
+			if ( transmittance < 1.0 )
 			{
 				proj_depth = min(proj_depth, t);
 			}
@@ -251,6 +251,8 @@ vec4 CalculateCloud(
 		proj_depth = -1.0;
 		return vec4(0.0);
 	}
+
+	proj_depth = depth;
 	
 	vec4 pixel = RayMarch(
 		proj_depth,

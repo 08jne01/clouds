@@ -14,7 +14,7 @@ layout(rgba16f, set = 0, binding = 5) uniform image2D cloud_depth;
 layout(rgba16f, set = 0, binding = 4) uniform image2D cloud_display;
 layout(rgba16f, set = 0, binding = 3) uniform image2D cloud_image_prev;
 
-layout(rgba16f, set = 0, binding = 0) uniform writeonly image2D cloud_image;
+layout(rgba16f, set = 0, binding = 0) uniform image2D cloud_image;
 layout(column_major, set = 0, binding = 1) uniform RenderData
 {
     mat4 INV_VIEW_MATRIX;
@@ -27,17 +27,17 @@ layout(push_constant, std430) uniform PushConstants {
     vec2 time;
     ivec2 offset;
     vec2 cloud_size;
-    vec2 padding0;
+    ivec2 current_offset;
 } constants;
 
 vec2 ReprojectPixel(vec2 uv, float norm_depth)
 {
 	vec2 ndc = uv * 2.0 - 1.0;
 
-    vec4 view = render_data.INV_PROJECTION_MATRIX * vec4(ndc, norm_depth, 1.0);
+    vec4 view = render_data.INV_PROJECTION_MATRIX * vec4(ndc, 1.0, 1.0);
     view /= view.w;
 
-    vec4 ray_direction = render_data.INV_VIEW_MATRIX * vec4(normalize(view.xyz) * norm_depth,1.0);
+    vec4 ray_direction = render_data.INV_VIEW_MATRIX * vec4(normalize(view.xyz)*norm_depth, 1.0);
 
 
     vec4 prev_view = render_data.PREV_VIEW_MATRIX * ray_direction;
@@ -54,13 +54,20 @@ vec2 ReprojectPixel(vec2 uv, float norm_depth)
     return prev_uv;
 }
 
-float Depth(vec2 uv, float depth)
+float LinearDepth(vec2 uv, float non_linear_depth)
 {
-    vec4 view = render_data.INV_PROJECTION_MATRIX * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
-    view /= view.w;
-    view.xyz = normalize(view.xyz) * depth;
+    vec3 ndc = vec3(uv * 2.0 - 1.0, non_linear_depth);
 
-    vec4 ndc = inverse(render_data.INV_PROJECTION_MATRIX) * view;
+    vec4 view = render_data.INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
+	view /= view.w;
+    float linear_depth = -view.z;
+    return linear_depth;
+}
+
+float ClipDepth(vec2 uv, float depth)
+{
+    vec4 ndc = inverse(render_data.INV_PROJECTION_MATRIX) * vec4(0.0, 0.0, -depth, 1.0);
+    ndc /= ndc.w;
     return ndc.z;
 }
 
@@ -84,7 +91,15 @@ void main()
         constants.time.x
     );
 
-    float norm_depth = Depth(screen_uv, proj_depth);
+    // vec4 cloud_pixel_new = ProcessPixel(
+    //     proj_depth,
+    //     render_data.INV_VIEW_MATRIX,
+    //     render_data.INV_PROJECTION_MATRIX,
+    //     screen_uv,
+    //     constants.time.x
+    // );
+
+    float norm_depth = ClipDepth(screen_uv, proj_depth);
     norm_depth = clamp(norm_depth, 0.0, 1.0);
 
 
@@ -99,6 +114,10 @@ void main()
 
     for ( int i = 0; i < 4; i++ )
     {
+
+        //constants.current_offset.x;
+        //int i = (constants.current_offset.x + 0) % 4;
+
         ivec2 reproject_index = index + reproject_offset[i];
         vec2 uv = vec2(reproject_index) / (max_size-1);
 
@@ -128,8 +147,8 @@ void main()
         )
         {
             //cloud_pixel
-            imageStore(cloud_display, reproject_index, cloud_pixel);
-            //imageStore(cloud_display, reproject_index, vec4(1.0, 0.0, 0.0, 1.0));
+            //imageStore(cloud_image, reproject_index, cloud_pixel);
+            //imageStore(cloud_image, reproject_index, vec4(1.0, 0.0, 0.0, 1.0));
         }
         else
         {
@@ -141,16 +160,75 @@ void main()
             vec2 adjusted_uv = mix(min_uv, max_uv, old_uv);
 
             vec4 pixel = imageLoad(cloud_image_prev, old_index);
+
+            // if ( pixel.a == 0.0 )
+            // {
+            //     imageStore(cloud_image, reproject_index, cloud_pixel);
+            // }
+            // else
+            // {
+            // }
+
             //imageStore(cloud_display, reproject_index, vec4(old_uv, 0.0, 1.0));
-            imageStore(cloud_display, reproject_index, pixel);
+            imageStore(cloud_image, reproject_index, pixel);
         }
+
+        //vec4 pixel = imageLoad(cloud_image_prev, old_index);
+
+        float real_depth = texture(depth_texture, uv).r;
 
         
 
+        // if ( real_depth >= norm_depth )
+        // {
+        //     imageStore(cloud_display, reproject_index, vec4(0.0, 0.0, 0.0, 0.0));
+        // }
+        // else
+        // {
+
+        // }
+
+        float d = LinearDepth(screen_uv, texture(depth_texture, screen_uv).r);
+        float d1 = ClipDepth(screen_uv, d);
+
+        //imageStore(cloud_display, reproject_index, vec4(vec3(proj_depth / 100000.0), 1.0));
+        
         //vec2 pixel_same = uv - old_uv;
         //bool same = reproject_index == old_index;
 
        
+    }
+
+    for ( int i = 0; i < 4; i++ )
+    {
+        ivec2 reproject_index = index + reproject_offset[i];
+        vec2 uv = vec2(reproject_index) / (max_size-1);
+
+        float pixel_depth = imageLoad(cloud_depth, reproject_index).r;
+
+        vec2 old_uv = ReprojectPixel(uv, proj_depth);
+
+        ivec2 old_index = ivec2(round(old_uv * vec2(max_size-1)));
+        vec4 pixel = imageLoad(cloud_image_prev, old_index);
+
+        if (
+            proj_depth < 0.0 ||
+            old_index.x < 0 || 
+            old_index.y < 0 ||
+            old_index.x >= (max_size.x) ||
+            old_index.y >= (max_size.y)
+        )
+
+        {
+            imageStore(cloud_display, reproject_index, cloud_pixel);
+        }
+        else
+        {
+            imageStore(cloud_display, reproject_index, pixel);
+        }
+
+
+
     }
 
     
@@ -162,6 +240,8 @@ void main()
 
     //imageStore(cloud_image, render_index, cloud_pixel);
     imageStore(cloud_depth, render_index, vec4(vec3(norm_depth), 1.0));
-    imageStore(cloud_display, render_index, cloud_pixel);
+    imageStore(cloud_image, render_index, cloud_pixel);
+    //imageStore(cloud_display, render_index, imageLoad(cloud_image,  render_index));
+    //imageStore(cloud_display, render_index, cloud_pixel);
     //imageStore(cloud_display, render_index, vec4(vec3(norm_depth), 1.0));
 }

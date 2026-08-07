@@ -515,8 +515,8 @@ public partial class CloudComposite : CompositorEffect
         constants_size = CopyValue(push_constants, constants_size, pixel_offset.Y);
         constants_size = CopyValue(push_constants, constants_size, cloud_size.X);
         constants_size = CopyValue(push_constants, constants_size, cloud_size.Y);
-        constants_size = CopyValue(push_constants, constants_size, 0.0f);
-        constants_size = CopyValue(push_constants, constants_size, 0.0f);
+        constants_size = CopyValue(push_constants, constants_size, offset);
+        constants_size = CopyValue(push_constants, constants_size, offset);
 
         int render_data_buffer_size = 0;
 
@@ -550,14 +550,6 @@ public partial class CloudComposite : CompositorEffect
         render_data_buffer_size = CopySpanValues<float>(
             render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_camera_projection.Value) // prev inv proj mat
         );
-
-
-        if ( render_new )
-        {
-            // copy for next frame
-            prev_inv_camera_transform = inv_camera_transform;
-            prev_camera_projection = camera_projection;
-        }
         
         Debug.Assert(constants_size % 4 == 0);
         Debug.Assert(render_data_buffer_size % 4 == 0);
@@ -605,9 +597,11 @@ public partial class CloudComposite : CompositorEffect
 
         offset = (offset + 1) % 4;
 
-        if ( render_new )
+        if ( render_new && offset == 0 )
         {
-            rd.TextureCopy(cloud_display_buffer, prev_cloud_buffer, Vector3.Zero, Vector3.Zero, new Vector3(cloud_buffer_x, cloud_buffer_y, 1), 0, 0, 0, 0);
+            rd.TextureCopy(cloud_buffer, prev_cloud_buffer, Vector3.Zero, Vector3.Zero, new Vector3(cloud_buffer_x, cloud_buffer_y, 1), 0, 0, 0, 0);
+            prev_inv_camera_transform = inv_camera_transform;
+            prev_camera_projection = camera_projection;
         }
     }
 }
