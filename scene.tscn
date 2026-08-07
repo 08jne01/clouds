@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://wjo8yyg8qlj3" path="res://ClipMap.cs" id="1_ulcgi"]
 [ext_resource type="Shader" uid="uid://o84c0w7r83wg" path="res://Debug.gdshader" id="2_nxogm"]
 [ext_resource type="Texture2D" uid="uid://vroikvm31fog" path="res://blue_noise.png" id="2_y2354"]
+[ext_resource type="CompressedTexture3D" uid="uid://dobidetoegcf6" path="res://curl_noise_packed.png" id="3_5juve"]
 [ext_resource type="Shader" uid="uid://cxaobjp2q056y" path="res://Clouds.gdshader" id="3_3253y"]
 [ext_resource type="Script" uid="uid://cln0i786q2ule" path="res://CloudComposite.cs" id="4_73fnb"]
 [ext_resource type="Script" uid="uid://bpyt2gfti25xm" path="res://Clouds.cs" id="4_u3cyc"]
@@ -10,31 +11,27 @@
 [ext_resource type="Script" uid="uid://bpqs7301iovy6" path="res://NoiseTest.cs" id="7_ni31j"]
 [ext_resource type="Shader" uid="uid://b340kxrht7joa" path="res://Display3DTexture.gdshader" id="8_xlvrw"]
 
-[sub_resource type="Gradient" id="Gradient_0shie"]
-colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
-
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_xwwmg"]
-noise_type = 2
-frequency = 0.0217
+noise_type = 3
+frequency = 0.0321
 fractal_octaves = 4
 
 [sub_resource type="NoiseTexture2D" id="NoiseTexture2D_rixys"]
-width = 1024
-height = 1024
+width = 256
+height = 256
 noise = SubResource("FastNoiseLite_xwwmg")
-color_ramp = SubResource("Gradient_0shie")
 seamless = true
-
-[sub_resource type="Texture3DRD" id="Texture3DRD_73fnb"]
 
 [sub_resource type="Texture3DRD" id="Texture3DRD_5juve"]
 
-[sub_resource type="Curve" id="Curve_5juve"]
-_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.12015504, 1), 0.0, 0.0, 0, 0, Vector2(0.2248062, 1), 0.0, 0.0, 0, 0, Vector2(0.5155039, 0.7894738), -1.7458647, -1.7458647, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
-point_count = 5
+[sub_resource type="Texture3DRD" id="Texture3DRD_fy5k1"]
 
-[sub_resource type="CurveTexture" id="CurveTexture_73fnb"]
-curve = SubResource("Curve_5juve")
+[sub_resource type="Gradient" id="Gradient_5juve"]
+offsets = PackedFloat32Array(0, 0.09788868, 0.15355086, 0.25182483, 0.38321167, 0.5839416, 0.8321168, 0.919708, 0.95255476, 1)
+colors = PackedColorArray(0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_5juve"]
+gradient = SubResource("Gradient_5juve")
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_nxogm"]
 render_priority = 0
@@ -46,24 +43,29 @@ shader_parameter/light_color = Color(1, 1, 1, 1)
 shader_parameter/falloff_light = 0.4
 shader_parameter/falloff_color = 0.4
 shader_parameter/darkness_threshold = 0.01
-shader_parameter/cloud_threshold = 0.86999998055376
+shader_parameter/cloud_threshold = 0.249999994412
 shader_parameter/cloud_threshold_delta = 0.999999977648
-shader_parameter/cloud_density = 0.5
+shader_parameter/cloud_density = 0.2
 shader_parameter/cloud_scale = 1.0
-shader_parameter/fine_scale = 3.90000005811468
-shader_parameter/fine_blend = 0.2999999932944
-shader_parameter/scattering_forward = 0.70000001043084
-shader_parameter/scattering_backward = 0.20000000298024
+shader_parameter/fine_scale = 4.0000000596048
+shader_parameter/fine_blend = 0.999999977648
+shader_parameter/scattering_forward = 0.5000000074506
+shader_parameter/scattering_backward = 0.30000000447036
 shader_parameter/scattering_omnidirectional = 0.70000001043084
-shader_parameter/scattering_directional = 0.30000000447036
+shader_parameter/scattering_directional = 0.5000000074506
 shader_parameter/scattering_direction_blend = 0.5000000074506
+shader_parameter/curl_noise_blend = 1.0000000475
+shader_parameter/curl_noise_scale = 0.2000000095
+shader_parameter/coverage_density = 0.50000002375
 shader_parameter/padding0 = 0.0
 shader_parameter/padding1 = 0.0
-shader_parameter/density_texture = SubResource("Texture3DRD_73fnb")
-shader_parameter/fine_density_texture = SubResource("Texture3DRD_5juve")
-shader_parameter/height_texture = SubResource("CurveTexture_73fnb")
+shader_parameter/padding2 = 0.0
+shader_parameter/density_texture = SubResource("Texture3DRD_5juve")
+shader_parameter/fine_density_texture = SubResource("Texture3DRD_fy5k1")
+shader_parameter/height_texture = SubResource("GradientTexture1D_5juve")
 shader_parameter/cloud_coverage = SubResource("NoiseTexture2D_rixys")
 shader_parameter/blue_noise = ExtResource("2_y2354")
+shader_parameter/curl_noise = ExtResource("3_5juve")
 
 [sub_resource type="BoxMesh" id="BoxMesh_4ttxi"]
 material = SubResource("ShaderMaterial_nxogm")
@@ -83,7 +85,7 @@ sky_material = SubResource("ProceduralSkyMaterial_o4mie")
 background_mode = 2
 sky = SubResource("Sky_0yjkd")
 
-[sub_resource type="Texture2DArrayRD" id="Texture2DArrayRD_fy5k1"]
+[sub_resource type="Texture2DArrayRD" id="Texture2DArrayRD_5c1cw"]
 
 [sub_resource type="CompositorEffect" id="CompositorEffect_xlvrw"]
 resource_local_to_scene = false

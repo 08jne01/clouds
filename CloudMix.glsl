@@ -30,11 +30,15 @@ void main()
 
     vec4 image_pixel = imageLoad(color_image, index);
 
-    imageStore(color_image, index, mix(
-        image_pixel,
-        vec4(cloud_pixel.rgb, 1.0),
-        cloud_pixel.a
-    ));
+    imageStore(color_image, index,
+        vec4(image_pixel.rgb * (1.0 - cloud_pixel.a) + cloud_pixel.rgb, image_pixel.a)
+    );
+
+    // imageStore(color_image, index, mix(
+    //     image_pixel,
+    //     vec4(cloud_pixel.rgb, 1.0),
+    //     cloud_pixel.a
+    // ));
 
     // imageStore(color_image, index, 
     //     vec4(cloud_pixel.rgb, 1.0)

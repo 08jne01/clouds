@@ -10,9 +10,8 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 //layout(set = 0, binding = 2) uniform sampler2D depth_texture;
 
-layout(rgba16f, set = 0, binding = 5) uniform image2D cloud_depth;
+layout(set = 0, binding = 3) uniform sampler2DArray cloud_texture;
 layout(rgba16f, set = 0, binding = 4) uniform image2D cloud_display;
-layout(rgba16f, set = 0, binding = 3) uniform image2D cloud_image_prev;
 
 layout(rgba8, set = 0, binding = 0) uniform image2DArray cloud_image;
 layout(column_major, set = 0, binding = 1) uniform RenderData
@@ -69,11 +68,18 @@ float LinearDepth(vec2 uv, float non_linear_depth)
     return linear_depth;
 }
 
-float ClipDepth(vec2 uv, float depth)
+float ClipDepth(float depth)
 {
     vec4 ndc = inverse(render_data.INV_PROJECTION_MATRIX) * vec4(0.0, 0.0, -depth, 1.0);
     ndc /= ndc.w;
     return ndc.z;
+}
+
+void WritePixel(ivec2 render_index, vec4 pixel)
+{
+    vec4 current_pixel = imageLoad(cloud_display, render_index);
+    vec4 new_pixel =  mix(current_pixel, pixel, 0.5);
+    imageStore(cloud_display, render_index, new_pixel);
 }
 
 void main()
@@ -96,6 +102,15 @@ void main()
         constants.time.x
     );
 
+    bool no_reproject = false;
+    if ( proj_depth < 0.0 )
+    {
+        //proj_depth = ClipDepth(1.0); //max(proj_depth, 100.0);
+        no_reproject = true;
+    }
+    
+    proj_depth = max(proj_depth, 10.0);
+
     // vec4 cloud_pixel_new = ProcessPixel(
     //     proj_depth,
     //     render_data.INV_VIEW_MATRIX,
@@ -104,7 +119,7 @@ void main()
     //     constants.time.x
     // );
 
-    float norm_depth = ClipDepth(screen_uv, proj_depth);
+    float norm_depth = ClipDepth(proj_depth);
     norm_depth = clamp(norm_depth, 0.0, 1.0);
 
 
@@ -212,9 +227,9 @@ void main()
     imageStore(cloud_image, ivec3(index + reproject_offset[2], constants.current_offset.x), cloud_pixel);
     imageStore(cloud_image, ivec3(index + reproject_offset[3], constants.current_offset.x), cloud_pixel);
 
-    //imageStore(cloud_display, render_index, cloud_pixel);
+    WritePixel(render_index, cloud_pixel);
 
-    for ( int i = 0; i < 4; i++ )
+    for ( int i = 0; i < 3; i++ )
     {
         int j = (i + constants.current_offset.x + 1) % 4;
 
@@ -234,6 +249,7 @@ void main()
         
 
         if (
+            no_reproject ||
             proj_depth < 0.0 ||
             old_index.x < 0 || 
             old_index.y < 0 ||
@@ -241,16 +257,18 @@ void main()
             old_index.y >= (max_size.y)
         )
         {
-            imageStore(cloud_display, reproject_index, cloud_pixel);
+            WritePixel(reproject_index, cloud_pixel);
             //imageStore(cloud_display, reproject_index, vec4(1.0, 0.0, 0.0, 1.0));
         }
         else
         {
             vec4 pixel = imageLoad(cloud_image, ivec3(old_index,j));
+            //vec4 pixel = texture(cloud_texture, vec3(old_uv * constants.cloud_size, float(j)));
+
             if ( pixel.a == 0.0 )
-                imageStore(cloud_display, reproject_index, cloud_pixel);
+                WritePixel(reproject_index, cloud_pixel);
             else
-                imageStore(cloud_display, reproject_index, pixel);
+                WritePixel(reproject_index, pixel);
         }
     }
 

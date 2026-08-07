@@ -29,7 +29,7 @@ layout(std430, set = 1, binding = 0) buffer CloudSettings
 	UNIFORM(float cloud_threshold_delta)        HINT(hint_range(0.0, 1.0, 0.01))    DEFAULT(0.1);
 	UNIFORM(float cloud_density);
 	UNIFORM(float cloud_scale)                  DEFAULT(1.0);
-	UNIFORM(float fine_scale)                   HINT(hint_range(0.0, 10.0, 0.1))   DEFAULT(4.0);
+	UNIFORM(float fine_scale)                   HINT(hint_range(0.0, 10.0, 0.1))    DEFAULT(4.0);
 	UNIFORM(float fine_blend)                   HINT(hint_range(0.0, 1.0, 0.01))    DEFAULT(0.2);
 	
 	UNIFORM(float scattering_forward)           HINT(hint_range(0.0, 1.0, 0.1));
@@ -37,8 +37,13 @@ layout(std430, set = 1, binding = 0) buffer CloudSettings
 	UNIFORM(float scattering_omnidirectional)   HINT(hint_range(0.0, 1.0, 0.1));
 	UNIFORM(float scattering_directional)       HINT(hint_range(0.0, 1.0, 0.1));
 	UNIFORM(float scattering_direction_blend)   HINT(hint_range(0.0, 1.0, 0.1));
-	UNIFORM(float padding0); // 31 floats
-	UNIFORM(float padding1); // 32 floats
+	UNIFORM(float curl_noise_blend)				HINT(hint_range(0.0, 20.0, 0.001));
+	UNIFORM(float curl_noise_scale) 			HINT(hint_range(0.0, 1.0, 0.001)); 
+	
+	UNIFORM(float coverage_density) 			HINT(hint_range(0.0, 1.0, 0.001))   DEFAULT(1.0);
+	UNIFORM(float padding0);
+	UNIFORM(float padding1);
+	UNIFORM(float padding2); // 36
 #ifdef COMPUTE
 };
 #endif
@@ -48,6 +53,7 @@ LAYOUT(set = 1, binding = 2, uniform sampler3D fine_density_texture) HINT(repeat
 LAYOUT(set = 1, binding = 3, uniform sampler2D height_texture)       HINT(repeat_disable);
 LAYOUT(set = 1, binding = 4, uniform sampler2D cloud_coverage)       HINT(repeat_enable);
 LAYOUT(set = 1, binding = 5, uniform sampler2D blue_noise)           HINT(filter_nearest);
+LAYOUT(set = 1, binding = 6, uniform sampler3D curl_noise)           HINT(repeat_enable);
 //LAYOUT(set = 1, binding = 6, uniform sampler3D curl_noise)           HINT(repeat_enable);
 
 //https://jcgt.org/published/0007/03/04/
@@ -89,28 +95,47 @@ float Density(vec3 position, float time)
 	vec3 uvw = (position - bb_min) / vec3(delta);
 	vec3 uvw_world = position / vec3(max_dim);
 	
-	float coverage = texture(cloud_coverage, uvw_world.xz * 0.1).r;
+	//float coverage = texture(cloud_coverage, uvw_world.xz * 0.1).r;
+	
+	
 	
 	float coarse_density = 
 		0.5 * (texture(density_texture, uvw_world * 0.1).r) +
-		.25 * (texture(density_texture, uvw_world * 0.25).g) +
-		0.125 * (texture(density_texture, uvw_world * 2.0).b) +
-		0.0625 * (texture(density_texture, uvw_world * 5.0).a);
+		0.25 * (texture(density_texture, uvw_world * 0.25).g) +
+		0.125 * (texture(density_texture, uvw_world * 2.0).b);
+		//-0.125 * (texture(density_texture, uvw_world * 5.0).a);
 	coarse_density /= 0.9375;
 
+	float coverage = clamp(texture(cloud_coverage, uvw_world.xz * 0.1).r + coverage_density, 0.0, 1.0);
 
-	float fine_density = SampleDensityTexture(texture(fine_density_texture, uvw_world * fine_scale)); //;
+	vec3 curl_noise_vector = curl_noise_blend * (texture(curl_noise, uvw_world * curl_noise_scale).rgb - 0.5) * 2.0;
+	float fine_density = SampleDensityTexture(texture(fine_density_texture, curl_noise_vector + (uvw_world) * fine_scale)); //;
 	
 	//float density = course_density * (1.0 - fine_blend) + fine_density * fine_blend;
 	
-	float density = coarse_density - mix(0.0, 1.0 - fine_density, coarse_density * fine_blend);
+	float density = coarse_density
+		- mix(0.0, 1.0 - fine_density, (1.0 - coarse_density) * fine_blend);
 	
 	float height_density = texture(height_texture, vec2(uvw.y, 0.0)).r;
-	density *= height_density * height_density;
-	density *= coverage;
+	//density *= height_density;
+
+	density = clamp(density,0.0,1.0);
+	//density *= 1.0 - uvw.y;
 	
-	float cloud_t = clamp((density - cloud_threshold) / cloud_threshold_delta, 0.0, 1.0);
+	// 0.0, 0.0,
+	// 
 	
+	//density *= height_density * height_density;
+	//density *= cloud_threshold;
+	
+	
+
+	float cloud_t = clamp((density - (1.0 - coverage * height_density * cloud_threshold)) / cloud_threshold_delta, 0.0, 1.0);
+	
+	
+	
+	
+	//return density * cloud_threshold;
 	return mix(0.0, cloud_density, cloud_t);
 	
 	//return step(density, cloud_threshold) * cloud_density;
@@ -132,8 +157,8 @@ float LightContribution(vec3 ray_origin, float time)
 	vec2 intersection = IntersectBox(bb_min, bb_max, ray_origin, 1.0 / light_direction);
 	float depth = intersection.y;
 	
-	const int n_samples = 32;
-	float dt = depth / float(n_samples-1);
+	const int n_samples = 16;
+	float dt = 0.5 * depth / float(n_samples-1);
 	
 	vec3 ray_step = light_direction * dt;
 	
@@ -150,6 +175,9 @@ float LightContribution(vec3 ray_origin, float time)
 		}
 		ray_origin += ray_step;
 	}
+
+	density += Density(ray_origin + light_direction * depth * 0.25, time);
+
 	float optical_depth = falloff_light * density * dt;
 	
 	float transmittance = BeerPowder(optical_depth);
@@ -189,7 +217,7 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 	// environment colour
 	vec3 color = vec3(0.0);// texture(screen_texture, screen_uv).rgb;// vec3(1.0);//vec3(0.0);
 	
-	const int n_samples = 256;
+	const int n_samples = 128;
 	
 	float dt = depth / float(n_samples-1);
 	
@@ -202,14 +230,14 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 	float phase = Phase(cosa);// max(, 0.0);
 	
 	float transmittance = 1.0;
-	float t = 0.0;
-	
+	float t = dt * (texture(blue_noise, fract(4.0 * screen_uv * time)).r - 0.5);
+	float accumulated_weight = 0.0;
 	for ( int i = 0; i < n_samples; i++ )
 	{
 		//float t = -a / z + b;
 
-		float noise_offset = 0.0 * dt * texture(blue_noise, fract(4.0 * screen_uv * time + t)).r;
-		vec3 ray_position = ray_origin + ray_direction * (t + noise_offset);
+		
+		vec3 ray_position = ray_origin + ray_direction * (t);
 
 		float density = Density(ray_position, time);
 		
@@ -218,10 +246,21 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 			float light_transmittance = LightContribution(ray_position, time);
 			
 			//color = light_color;// * 0.1 * light_depth;// LightContribution(ray_origin, light_depth);
-			light_energy += light_transmittance * transmittance * density;
-			transmittance *= exp(-falloff_color * density * dt);
 
-			if ( transmittance < 1.0 )
+			float alpha = density * falloff_color;
+			float transmittance_step = exp(-alpha * dt);
+
+			// analytic integral of transmittance over this step
+			float light_transmittance_step = (1.0 - transmittance_step) / falloff_color;
+			light_energy += transmittance * light_transmittance * light_transmittance_step;
+
+			transmittance *= transmittance_step;
+
+			// float weight = density * dt;
+			// proj_depth += (t + depth) * weight;
+			// accumulated_weight += weight;
+
+			if ( transmittance < 0.8 )
 			{
 				proj_depth = min(proj_depth, t);
 			}
@@ -235,8 +274,10 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 		//ray_origin += ray_step;
 		t += dt;
 	}
+
+	//proj_depth = proj_depth / accumulated_weight;
 	
-	light_energy *= phase * dt * 1.0;
+	light_energy *= phase;// * dt * 1.0;
 	return vec4(light_color.rgb * light_energy, 1.0 - transmittance);
 }
 

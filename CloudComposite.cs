@@ -31,18 +31,26 @@ public partial class CloudComposite : CompositorEffect
     byte[] render_data_buffer_bytes = new byte[1024];
 
     Rid cloud_settings_buffer;
-    byte[] cloud_settings_buffer_bytes = new byte[32 * 4];
+    byte[] cloud_settings_buffer_bytes = new byte[36 * 4];
 
     [Export] Texture2DArrayRD tex = new Texture2DArrayRD();
 
     [Export] bool render_new = true;
     
-    
+    public enum CloudQuality
+    {
+        LOW,
+        HIGH
+    }
+
+    [Export] public CloudQuality quality = CloudQuality.HIGH;
 
     uint cloud_buffer_x = 1920;
     uint cloud_buffer_y = 1080;
     Rid cloud_buffer; // clean cloud (with interlacing)
-    Rid prev_cloud_buffer; // prev
+    Rid prev_cloud_buffer; // clean cloud (with interlacing) previous
+
+    //Rid prev_cloud_buffer; // prev
     Rid cloud_display_buffer; // has reprojection
     Rid cloud_depth_buffer; 
 
@@ -109,33 +117,18 @@ public partial class CloudComposite : CompositorEffect
                 RenderingDevice.TextureUsageBits.ColorAttachmentBit
         };
 
-        prev_cloud_buffer = rd.TextureCreate(texture_format, new RDTextureView());
         cloud_display_buffer = rd.TextureCreate(texture_format, new RDTextureView());
         cloud_depth_buffer = rd.TextureCreate(texture_format, new RDTextureView());
 
-        var texture_format3d = new RDTextureFormat
-        {
-            Format = RenderingDevice.DataFormat.R8G8B8A8Unorm,
-            TextureType = RenderingDevice.TextureType.Type2DArray,
-            Width = cloud_buffer_x,
-            Height = cloud_buffer_y,
-            Depth = 1,
-            ArrayLayers = 4,
-            Mipmaps = 1,
-            UsageBits = 
-                RenderingDevice.TextureUsageBits.StorageBit | 
-                RenderingDevice.TextureUsageBits.CanUpdateBit | 
-                RenderingDevice.TextureUsageBits.CanCopyToBit |
-                RenderingDevice.TextureUsageBits.CanCopyFromBit |
-                RenderingDevice.TextureUsageBits.SamplingBit |
-                RenderingDevice.TextureUsageBits.ColorAttachmentBit
-        };
+        texture_format.ArrayLayers = 4;
+        texture_format.TextureType = RenderingDevice.TextureType.Type2DArray;
 
-        cloud_buffer = rd.TextureCreate(texture_format3d, new RDTextureView());
+        cloud_buffer = rd.TextureCreate(texture_format, new RDTextureView());
+        prev_cloud_buffer = rd.TextureCreate(texture_format, new RDTextureView());
         GD.Print(cloud_buffer);
 
-        //rd.TextureClear(cloud_buffer, new Color(1.0f, 1.0f, 1.0f, 1.0f), 0, 1, 0, 4);
-        rd.TextureClear(prev_cloud_buffer, new Color(0.0f, 0.0f, 0.0f, 0.0f), 0, 1, 0, 1);
+        rd.TextureClear(cloud_buffer, new Color(1.0f, 1.0f, 1.0f, 1.0f), 0, 1, 0, 4);
+        rd.TextureClear(prev_cloud_buffer, new Color(1.0f, 1.0f, 1.0f, 1.0f), 0, 1, 0, 4);
         rd.TextureClear(cloud_display_buffer, new Color(0.0f, 0.0f, 0.0f, 0.0f), 0, 1, 0, 1);
         rd.TextureClear(cloud_depth_buffer, new Color(0.0f, 0.0f, 0.0f, 0.0f), 0, 1, 0, 1);
 
@@ -307,9 +300,9 @@ public partial class CloudComposite : CompositorEffect
         var prev_cloud_buffer_uniform = new RDUniform
         {
             Binding = 3,
-            UniformType = RenderingDevice.UniformType.Image  
+            UniformType = RenderingDevice.UniformType.SamplerWithTexture  
         };
-        //prev_cloud_buffer_uniform.AddId(repeat_disabled_sampler);
+        prev_cloud_buffer_uniform.AddId(repeat_disabled_sampler);
         prev_cloud_buffer_uniform.AddId(prev_cloud_buffer);
 
         var cloud_display_buffer_uniform = new RDUniform
@@ -318,13 +311,6 @@ public partial class CloudComposite : CompositorEffect
             UniformType = RenderingDevice.UniformType.Image  
         };
         cloud_display_buffer_uniform.AddId(cloud_display_buffer);
-
-        var cloud_depth_buffer_uniform = new RDUniform
-        {
-            Binding = 5,
-            UniformType = RenderingDevice.UniformType.Image  
-        };
-        cloud_depth_buffer_uniform.AddId(cloud_depth_buffer);
 
 
         var render_data_buffer_uniform = new RDUniform
@@ -347,8 +333,7 @@ public partial class CloudComposite : CompositorEffect
             render_data_buffer_uniform,
             depth_uniform,
             prev_cloud_buffer_uniform,
-            cloud_display_buffer_uniform,
-            cloud_depth_buffer_uniform
+            cloud_display_buffer_uniform
         ]);
     }
 
@@ -464,9 +449,26 @@ public partial class CloudComposite : CompositorEffect
             cloud_material.GetShaderParameter("scattering_direction_blend").As<float>()
         );
 
-        // Padding0, Padding1
+        settings_size = CopyValue(
+            cloud_settings_buffer_bytes, settings_size,
+            cloud_material.GetShaderParameter("curl_noise_blend").As<float>()
+        );
+
+        settings_size = CopyValue(
+            cloud_settings_buffer_bytes, settings_size,
+            cloud_material.GetShaderParameter("curl_noise_scale").As<float>()
+        );
+
+        settings_size = CopyValue(
+            cloud_settings_buffer_bytes, settings_size,
+            cloud_material.GetShaderParameter("coverage_density").As<float>()
+        );
+
+        // padding
         settings_size = CopyValue(cloud_settings_buffer_bytes, settings_size,0.0f);
         settings_size = CopyValue(cloud_settings_buffer_bytes, settings_size,0.0f);
+        settings_size = CopyValue(cloud_settings_buffer_bytes, settings_size,0.0f);
+
         Debug.Assert(settings_size % 4 == 0);
 
         List<RDUniform> uniform_set = new List<RDUniform>(); 
@@ -487,6 +489,7 @@ public partial class CloudComposite : CompositorEffect
             CreateTextureUniform(3, "height_texture",       repeat_disabled_sampler),
             CreateTextureUniform(4, "cloud_coverage",       repeat_enabled_sampler),
             CreateTextureUniform(5, "blue_noise",           nearest_sampler),
+            CreateTextureUniform(6, "curl_noise",           repeat_enabled_sampler),
         ]);
     }
 
@@ -512,10 +515,21 @@ public partial class CloudComposite : CompositorEffect
 
         Vector2I pixel_offset = offset_vectors[offset];
 
+        int dispatch_denominator = 32;
+        switch ( quality )
+        {
+        case CloudQuality.LOW:
+            dispatch_denominator = 32; // half res final image, half res of that reprojected over 4 frames
+            break;
+        case CloudQuality.HIGH:
+            dispatch_denominator = 16; // full res final image, half res of that reprojected over 4 frames
+            break;
+        }
+
         // half frame buffer (divided by 8 too for compute)
         // half again for reprojection
-        int dispatch_width = buffer_size.X / 16; // 32 for half res buffer
-        int dispatch_height = buffer_size.Y / 16; 
+        int dispatch_width = buffer_size.X / dispatch_denominator; // 32 for half res buffer
+        int dispatch_height = buffer_size.Y / dispatch_denominator; 
 
         int cloud_x = 2 * dispatch_width * 8;
         int cloud_y = 2 * dispatch_height * 8;
@@ -630,6 +644,24 @@ public partial class CloudComposite : CompositorEffect
         rd.ComputeListDispatch(mix_pass, (uint)mix_dispatch_width, (uint)mix_dispatch_height, 1);
         rd.ComputeListEnd();
 
+        
+
+        if ( render_new )
+        {
+            for ( uint i = 0 ; i < 4; i++ )
+            {
+                rd.TextureCopy(
+                    cloud_buffer, 
+                    prev_cloud_buffer, 
+                    Vector3.Zero, Vector3.Zero, 
+                    //new Vector3(cloud_buffer_x, cloud_buffer_y, 1), 0, 0, (uint)offset, (uint)offset
+                    new Vector3(cloud_buffer_x, cloud_buffer_y, 1), 0, 0, i, i
+                );
+            }
+            
+        }
+
         offset = (offset + 1) % 4;
+
     }
 }
