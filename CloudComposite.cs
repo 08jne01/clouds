@@ -28,12 +28,12 @@ public partial class CloudComposite : CompositorEffect
     int offset = 0;
 
     Rid render_data_buffer;
-    byte[] render_data_buffer_bytes = new byte[512];
+    byte[] render_data_buffer_bytes = new byte[1024];
 
     Rid cloud_settings_buffer;
     byte[] cloud_settings_buffer_bytes = new byte[32 * 4];
 
-    [Export] Texture2Drd tex = new Texture2Drd();
+    [Export] Texture2DArrayRD tex = new Texture2DArrayRD();
 
     [Export] bool render_new = true;
     
@@ -51,8 +51,8 @@ public partial class CloudComposite : CompositorEffect
         ("res://CloudMaths.gdshaderinc", 0)
     ];
 
-    Transform3D? prev_inv_camera_transform;
-    Projection? prev_camera_projection;
+    Transform3D?[] prev_inv_camera_transform = new Transform3D?[4];
+    Projection?[] prev_camera_projection = new Projection?[4];
 
     public CloudComposite()
     {
@@ -109,17 +109,35 @@ public partial class CloudComposite : CompositorEffect
                 RenderingDevice.TextureUsageBits.ColorAttachmentBit
         };
 
-        cloud_buffer = rd.TextureCreate(texture_format, new RDTextureView());
         prev_cloud_buffer = rd.TextureCreate(texture_format, new RDTextureView());
         cloud_display_buffer = rd.TextureCreate(texture_format, new RDTextureView());
         cloud_depth_buffer = rd.TextureCreate(texture_format, new RDTextureView());
 
-        rd.TextureClear(cloud_buffer, new Color(0.0f, 0.0f, 0.0f, 0.0f), 0, 1, 0, 1);
+        var texture_format3d = new RDTextureFormat
+        {
+            Format = RenderingDevice.DataFormat.R8G8B8A8Unorm,
+            TextureType = RenderingDevice.TextureType.Type2DArray,
+            Width = cloud_buffer_x,
+            Height = cloud_buffer_y,
+            Depth = 1,
+            ArrayLayers = 4,
+            Mipmaps = 1,
+            UsageBits = 
+                RenderingDevice.TextureUsageBits.StorageBit | 
+                RenderingDevice.TextureUsageBits.CanUpdateBit | 
+                RenderingDevice.TextureUsageBits.CanCopyToBit |
+                RenderingDevice.TextureUsageBits.CanCopyFromBit |
+                RenderingDevice.TextureUsageBits.SamplingBit |
+                RenderingDevice.TextureUsageBits.ColorAttachmentBit
+        };
+
+        cloud_buffer = rd.TextureCreate(texture_format3d, new RDTextureView());
+        GD.Print(cloud_buffer);
+
+        //rd.TextureClear(cloud_buffer, new Color(1.0f, 1.0f, 1.0f, 1.0f), 0, 1, 0, 4);
         rd.TextureClear(prev_cloud_buffer, new Color(0.0f, 0.0f, 0.0f, 0.0f), 0, 1, 0, 1);
         rd.TextureClear(cloud_display_buffer, new Color(0.0f, 0.0f, 0.0f, 0.0f), 0, 1, 0, 1);
         rd.TextureClear(cloud_depth_buffer, new Color(0.0f, 0.0f, 0.0f, 0.0f), 0, 1, 0, 1);
-
-        tex.TextureRdRid = cloud_buffer;
 
 
         cloud_shader_file = GD.Load<RDShaderFile>("res://Clouds.glsl");
@@ -496,8 +514,8 @@ public partial class CloudComposite : CompositorEffect
 
         // half frame buffer (divided by 8 too for compute)
         // half again for reprojection
-        int dispatch_width = buffer_size.X / 32; 
-        int dispatch_height = buffer_size.Y / 32; 
+        int dispatch_width = buffer_size.X / 16; // 32 for half res buffer
+        int dispatch_height = buffer_size.Y / 16; 
 
         int cloud_x = 2 * dispatch_width * 8;
         int cloud_y = 2 * dispatch_height * 8;
@@ -525,14 +543,20 @@ public partial class CloudComposite : CompositorEffect
         Projection camera_projection = render_scene_data.GetCamProjection();
         Projection inv_camera_projection = camera_projection.Inverse();
 
-        if ( prev_camera_projection == null )
+        if ( prev_camera_projection[offset] == null )
         {
-            prev_camera_projection = camera_projection;
+            prev_camera_projection[0] = camera_projection;
+            prev_camera_projection[1] = camera_projection;
+            prev_camera_projection[2] = camera_projection;
+            prev_camera_projection[3] = camera_projection;
         }
 
-        if ( prev_inv_camera_transform == null )
+        if ( prev_inv_camera_transform[offset] == null )
         {
-            prev_inv_camera_transform = inv_camera_transform;
+            prev_inv_camera_transform[0] = inv_camera_transform;
+            prev_inv_camera_transform[1] = inv_camera_transform;
+            prev_inv_camera_transform[2] = inv_camera_transform;
+            prev_inv_camera_transform[3] = inv_camera_transform;
         }
 
         render_data_buffer_size = CopySpanValues<float>(
@@ -543,13 +567,24 @@ public partial class CloudComposite : CompositorEffect
             render_data_buffer_bytes, render_data_buffer_size, Matrix(inv_camera_projection) // inv proj mat
         );
 
-        render_data_buffer_size = CopySpanValues<float>(
-            render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_inv_camera_transform.Value) // prev inv view matrix
-        );
+        if ( render_new )
+        {
+            //rd.TextureCopy(cloud_buffer, prev_cloud_buffer, Vector3.Zero, Vector3.Zero, new Vector3(cloud_buffer_x, cloud_buffer_y, 1), 0, 0, 0, 0);
+            prev_inv_camera_transform[offset] = inv_camera_transform;
+            prev_camera_projection[offset] = camera_projection;
+        }
 
-        render_data_buffer_size = CopySpanValues<float>(
-            render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_camera_projection.Value) // prev inv proj mat
-        );
+        // prev inv view matrix
+        render_data_buffer_size = CopySpanValues<float>(render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_inv_camera_transform[0].Value));
+        render_data_buffer_size = CopySpanValues<float>(render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_inv_camera_transform[1].Value));
+        render_data_buffer_size = CopySpanValues<float>(render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_inv_camera_transform[2].Value));
+        render_data_buffer_size = CopySpanValues<float>(render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_inv_camera_transform[3].Value));
+
+        // prev inv proj mat
+        render_data_buffer_size = CopySpanValues<float>(render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_camera_projection[0].Value));
+        render_data_buffer_size = CopySpanValues<float>(render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_camera_projection[1].Value));
+        render_data_buffer_size = CopySpanValues<float>(render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_camera_projection[2].Value));
+        render_data_buffer_size = CopySpanValues<float>(render_data_buffer_bytes, render_data_buffer_size, Matrix(prev_camera_projection[3].Value));
         
         Debug.Assert(constants_size % 4 == 0);
         Debug.Assert(render_data_buffer_size % 4 == 0);
@@ -596,12 +631,5 @@ public partial class CloudComposite : CompositorEffect
         rd.ComputeListEnd();
 
         offset = (offset + 1) % 4;
-
-        if ( render_new && offset == 0 )
-        {
-            rd.TextureCopy(cloud_buffer, prev_cloud_buffer, Vector3.Zero, Vector3.Zero, new Vector3(cloud_buffer_x, cloud_buffer_y, 1), 0, 0, 0, 0);
-            prev_inv_camera_transform = inv_camera_transform;
-            prev_camera_projection = camera_projection;
-        }
     }
 }

@@ -49,10 +49,10 @@ public partial class Clouds : MeshInstance3D
             TextureRdRid = worley_fine_compute.texture
         });
 
-        material.SetShaderParameter("cloud_coverage", new Texture2Drd
-        {
-            TextureRdRid = worley_coverage_compute.texture
-        });
+        // material.SetShaderParameter("cloud_coverage", new Texture2Drd
+        // {
+        //     TextureRdRid = worley_coverage_compute.texture
+        // });
     }
 
     static void GenerateNoise(
@@ -111,7 +111,7 @@ public partial class Clouds : MeshInstance3D
         UpdateShader();
 
         GetViewport().GetCamera3D().Near = 0.1f;
-        GetViewport().GetCamera3D().Far = 30000.0f;
+        GetViewport().GetCamera3D().Far = 40000.0f;
     }
 
 

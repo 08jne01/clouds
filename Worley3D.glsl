@@ -30,12 +30,12 @@ uvec3 pcg3d(uvec3 v)
 }
 
 
-vec3 Random(vec3 uv)
+vec3 Random(vec3 uv, int seed)
 {
-	return vec3(pcg3d(uvec3(uv * 0xffffffffu))) / float(0xffffffffu);
+	return vec3(pcg3d(seed + uvec3(uv * 0xffffffffu))) / float(0xffffffffu);
 }
 
-float WorleyNoise(ivec3 pixel, ivec3 max_size, int square_size)
+float WorleyNoise(ivec3 pixel, ivec3 max_size, int square_size, int seed)
 {
     ivec3 n_squares = max_size / square_size;
 
@@ -84,12 +84,28 @@ float WorleyNoise(ivec3 pixel, ivec3 max_size, int square_size)
         ivec3 wrapped_square = ((current_square + offset) + n_squares) % n_squares;
 
         vec3 uv_square = PixelToUV(wrapped_square, n_squares);
-        vec3 point = Random(uv_square) + vec3(offset);
+        vec3 point = Random(uv_square, seed) + vec3(offset);
         float pixel_distance = length(point - pixel_location);
         min_distance = min(min_distance, pixel_distance);
     }
 
     return 1.0 - min_distance;
+}
+
+float FractalWorleyNoise(ivec3 pixel, ivec3 max_size, int square_size, int octaves, float gain_factor)
+{
+    float total = 0.0;
+    float gain = 1.0;
+    for ( int i = 0; i < octaves; i++ )
+    {
+        total += gain * WorleyNoise(pixel, max_size, square_size, i);
+        gain *= gain_factor;
+        square_size /= 2;
+    }
+
+    float norm = (1.0 - pow(gain_factor, float(octaves))) / (1.0 - gain);
+    total /= norm;
+    return total;
 }
 
 void main() {
@@ -103,10 +119,10 @@ void main() {
     ivec4 square_size = ivec4(params.square_size);
 
     vec4 result = vec4(
-        WorleyNoise(pixel, max_size, square_size.x),
-        WorleyNoise(pixel, max_size, square_size.y),
-        WorleyNoise(pixel, max_size, square_size.z),
-        WorleyNoise(pixel, max_size, square_size.w)
+        FractalWorleyNoise(pixel, max_size, square_size.x, 5, 0.5),
+        FractalWorleyNoise(pixel, max_size, square_size.y, 5, 0.5),
+        FractalWorleyNoise(pixel, max_size, square_size.z, 5, 0.5),
+        FractalWorleyNoise(pixel, max_size, square_size.w, 5, 0.5)
     );
 
     ivec3 index = ivec3(gl_GlobalInvocationID.xyz);

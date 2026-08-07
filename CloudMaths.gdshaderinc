@@ -29,7 +29,7 @@ layout(std430, set = 1, binding = 0) buffer CloudSettings
 	UNIFORM(float cloud_threshold_delta)        HINT(hint_range(0.0, 1.0, 0.01))    DEFAULT(0.1);
 	UNIFORM(float cloud_density);
 	UNIFORM(float cloud_scale)                  DEFAULT(1.0);
-	UNIFORM(float fine_scale)                   HINT(hint_range(0.0, 100.0, 1.0))   DEFAULT(4.0);
+	UNIFORM(float fine_scale)                   HINT(hint_range(0.0, 10.0, 0.1))   DEFAULT(4.0);
 	UNIFORM(float fine_blend)                   HINT(hint_range(0.0, 1.0, 0.01))    DEFAULT(0.2);
 	
 	UNIFORM(float scattering_forward)           HINT(hint_range(0.0, 1.0, 0.1));
@@ -88,17 +88,24 @@ float Density(vec3 position, float time)
 	vec3 uvw = (position - bb_min) / vec3(delta);
 	vec3 uvw_world = position / vec3(max_dim);
 	
-	float coverage = texture(cloud_coverage, uvw_world.xz).b;
+	float coverage = texture(cloud_coverage, uvw_world.xz * 0.1).r;
 	
-	float course_density = SampleDensityTexture(texture(density_texture, uvw_world));
-	float fine_density = SampleDensityTexture(texture(fine_density_texture, uvw_world * fine_scale));
+	float coarse_density = 
+		0.5 * (texture(density_texture, uvw_world * 0.1).r) +
+		.25 * (texture(density_texture, uvw_world * 0.25).g) +
+		0.125 * (texture(density_texture, uvw_world * 2.0).b);// +
+		//0.0625 * (texture(density_texture, uvw_world * 5.0).a);
+	coarse_density /= 0.9375;
+
+
+	float fine_density = texture(fine_density_texture, uvw_world * fine_scale).r; //SampleDensityTexture();
 	
 	//float density = course_density * (1.0 - fine_blend) + fine_density * fine_blend;
 	
-	float density = course_density - mix(0.0, 1.0 - fine_density, course_density * fine_blend);
+	float density = coarse_density - mix(0.0, 1.0 - fine_density, coarse_density * fine_blend);
 	
 	density *= texture(height_texture, vec2(uvw.y, 0.0)).r;
-	//density *= coverage;
+	density *= coverage;
 	
 	float cloud_t = clamp((density - cloud_threshold) / cloud_threshold_delta, 0.0, 1.0);
 	
@@ -123,7 +130,7 @@ float LightContribution(vec3 ray_origin, float time)
 	vec2 intersection = IntersectBox(bb_min, bb_max, ray_origin, 1.0 / light_direction);
 	float depth = intersection.y;
 	
-	const int n_samples = 16;
+	const int n_samples = 32;
 	float dt = depth / float(n_samples-1);
 	
 	vec3 ray_step = light_direction * dt;
@@ -180,7 +187,7 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 	// environment colour
 	vec3 color = vec3(0.0);// texture(screen_texture, screen_uv).rgb;// vec3(1.0);//vec3(0.0);
 	
-	const int n_samples = 64;
+	const int n_samples = 256;
 	
 	float dt = depth / float(n_samples-1);
 	
@@ -199,7 +206,7 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 	{
 		//float t = -a / z + b;
 
-		float noise_offset = dt * texture(blue_noise, fract(4.0 * screen_uv * time + t)).r;
+		float noise_offset = 0.0 * dt * texture(blue_noise, fract(4.0 * screen_uv * time + t)).r;
 		vec3 ray_position = ray_origin + ray_direction * (t + noise_offset);
 
 		float density = Density(ray_position, time);
@@ -212,7 +219,7 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 			light_energy += light_transmittance * transmittance * density;
 			transmittance *= exp(-falloff_color * density * dt);
 
-			if ( transmittance < 1.0 )
+			if ( transmittance < 0.8 )
 			{
 				proj_depth = min(proj_depth, t);
 			}
