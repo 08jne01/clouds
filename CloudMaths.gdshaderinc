@@ -56,6 +56,147 @@ LAYOUT(set = 1, binding = 5, uniform sampler2D blue_noise)           HINT(filter
 LAYOUT(set = 1, binding = 6, uniform sampler3D curl_noise)           HINT(repeat_enable);
 //LAYOUT(set = 1, binding = 6, uniform sampler3D curl_noise)           HINT(repeat_enable);
 
+const float earth_radius = 6400000.0; //6400000.0;
+const float atmosphere_0 = 500.0;
+const float atmosphere_1 = 5000.0;
+const float atmosphere_thickness = atmosphere_1 - atmosphere_0;
+const float max_ray_distance = 10000.0;
+
+const vec4 atmosphere_inner = vec4(
+	0.0, -earth_radius, 0.0,
+	atmosphere_0 + earth_radius
+);
+
+vec2 DistanceDepth(vec2 intersection)
+{
+	float distance_to_surface = max(intersection.x, 0.0);	
+	float depth = max(intersection.y - distance_to_surface, 0.0);
+	return vec2(distance_to_surface, depth);
+}
+
+// See notes about catastrophic cancellation in these below
+//https://en.wikipedia.org/wiki/Quadratic_formula#Numerical_calculation
+//https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-sphere-intersection.html
+// sphere xyz origin, w radius
+// returns all intersections (even ones behind)
+void IntersectSphere(inout vec2 t, vec3 p, vec3 rd, vec4 sphere)
+{
+	vec3 p_minus_c = p - sphere.xyz;
+	float r2 = sphere.w * sphere.w;
+
+	float c = dot(p_minus_c, p_minus_c) - r2;
+	float b = 2.0 * dot(rd, p_minus_c);
+
+	float discriminant = b*b - 4.0 * c;
+
+	if ( discriminant < 0.0 )
+		return;
+
+	float sqrt_discriminant = sqrt(discriminant); // always positive
+
+	// vec2 intersection = vec2(
+	// 	(-b - sqrt_discriminant) * 0.5,
+	// 	(-b + sqrt_discriminant) * 0.5
+	// );
+
+	// t0 = q/a (a is 1 here)
+	float t0 = -0.5 * (b + sign(b) * sqrt_discriminant);
+
+	if ( discriminant == 0.0 )
+	{
+		t = min(t, vec2(t0));
+		return;
+	}
+
+	float t1 = c / t0;
+
+	vec2 intersection = vec2(
+		min(t0,t1),
+		max(t0,t1)
+	);
+
+	//t = intersection;
+	t = min(t, intersection); // get minimum distance
+}
+
+float AbsMin(vec2 v)
+{
+	return abs(v.x) <= abs(v.y) ? v.x : v.y;
+}
+
+void IntersectShell(inout vec2 t, vec3 p, vec3 rd, vec4 sphere, float thickness)
+{
+	vec2 intersect0 = t;
+	vec2 intersect1 = t;
+
+	IntersectSphere(
+		intersect0, 
+		p,
+		rd,
+		vec4(sphere.xyz, sphere.w + thickness)
+	);
+	
+	IntersectSphere(
+		intersect1, 
+		p,
+		rd,
+		sphere
+	);
+
+	vec2 td0 = DistanceDepth(intersect0);
+	vec2 td1 = DistanceDepth(intersect1);
+
+	float t0 = td0.x;
+	float d0 = td0.y;
+
+	float t1 = td1.x;
+	float d1 = td1.y;
+
+	vec2 intersect = vec2(t.x,0.0);
+
+	if ( d1 > 0.0 )
+	{
+		if ( t0 > 0.0 )
+		{
+			intersect.x = t0;
+			intersect.y =  t1 - t0;
+		}
+		else if ( t1 > 0.0 )
+		{
+			intersect.x = 0.0;
+			intersect.y =  d0;
+		}
+		else
+		{
+			intersect.x = d1;
+			intersect.y = d0 - d1;
+		}
+	}
+	else if ( d0 > 0.0 )
+	{	// doesn't intersect the centre sphere then it's just a normal sphere
+
+
+		if ( t0 > 0.0 )
+		{
+			intersect = vec2(
+				t0,
+				d0
+			);
+		}
+		else
+		{
+			intersect = vec2(
+				0.0,
+				d0
+			);
+		}
+
+		
+	}
+
+	t = min(t, intersect);
+}
+
 //https://jcgt.org/published/0007/03/04/
 //https://github.com/SebLague/Clouds/blob/master/Assets/Scripts/Clouds/Shaders/Clouds.shader
 vec2 IntersectBox(vec3 box_min, vec3 box_max, vec3 ray_origin, vec3 inverse_ray) 
@@ -116,7 +257,12 @@ float Density(vec3 position, float time)
 	float density = coarse_density
 		- mix(0.0, 1.0 - fine_density, (1.0 - coarse_density) * fine_blend);
 	
-	float height_density = texture(height_texture, vec2(uvw.y, 0.0)).r;
+
+
+
+	float height_u = (length(position - atmosphere_inner.xyz) - atmosphere_inner.w) / (atmosphere_thickness);
+
+	float height_density = texture(height_texture, vec2(height_u, 0.0)).r;
 	//density *= height_density;
 
 	density = clamp(density,0.0,1.0);
@@ -153,9 +299,23 @@ float Beer(float optical_depth)
 
 float LightContribution(vec3 ray_origin, float time)
 {
+	vec2 intersection = vec2(30000.0); // pass in max distance
 	
-	vec2 intersection = IntersectBox(bb_min, bb_max, ray_origin, 1.0 / light_direction);
+	IntersectShell(
+		intersection,
+		ray_origin,
+		light_direction,
+		atmosphere_inner,
+		atmosphere_thickness
+	);
+
 	float depth = intersection.y;
+
+	if ( depth > max_ray_distance )
+		return 1.0;
+
+	// vec2 intersection = IntersectBox(bb_min, bb_max, ray_origin, 1.0 / light_direction);
+	// float depth = intersection.y;
 	
 	const int n_samples = 16;
 	float dt = 0.5 * depth / float(n_samples-1);
@@ -291,10 +451,38 @@ vec4 CalculateCloud(
 )
 {
 	vec3 inverse_ray_direction = 1.0 / ray_direction;
-	vec2 intersection = IntersectBox(bb_min, bb_max, ray_origin, inverse_ray_direction);
+	//vec2 intersection = IntersectBox(bb_min, bb_max, ray_origin, inverse_ray_direction);
+
+	float max_ray_distance_truncated = max_ray_distance;
+	// if ( ray_direction.y < 0.0 )
+	// {
+	// 	max_ray_distance_truncated = min(-ray_origin.y / ray_direction.y, max_ray_distance_truncated);
+	// }
+
+	vec2 intersection = vec2(max_ray_distance_truncated);
+
+	IntersectShell(
+		intersection,
+		ray_origin,
+		ray_direction,
+		//vec4(0.0,0.0,0.0,100.0),
+		//50.0
+		atmosphere_inner,
+		atmosphere_thickness
+	);
+
+
 	float t = intersection.x;
 	float depth = intersection.y;
+
+	
 	depth = min(depth, pixel_depth-intersection.x);
+
+	float T = exp(-intersection.y * 0.01);
+	
+	//return vec4(t / max_ray_distance, depth / max_ray_distance, 0.0, 0.5);
+
+
 
 	if ( depth <= 0.0 || intersection.y <= 0.0 )
 	{

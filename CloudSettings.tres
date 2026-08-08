@@ -1,0 +1,58 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://ckwyk7kjhgs53"]
+
+[ext_resource type="Shader" uid="uid://cxaobjp2q056y" path="res://Clouds.gdshader" id="1_osc15"]
+[ext_resource type="Texture2D" uid="uid://vroikvm31fog" path="res://blue_noise.png" id="2_i3xrb"]
+[ext_resource type="CompressedTexture3D" uid="uid://dobidetoegcf6" path="res://curl_noise_packed.png" id="3_24n7c"]
+[ext_resource type="Gradient" uid="uid://cnwjpqxpvx4mb" path="res://WeatherPreset0.tres" id="4_i3xrb"]
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_xwwmg"]
+noise_type = 3
+frequency = 0.0321
+fractal_octaves = 4
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_rixys"]
+width = 256
+height = 256
+noise = SubResource("FastNoiseLite_xwwmg")
+seamless = true
+
+[sub_resource type="Texture3DRD" id="Texture3DRD_5juve"]
+
+[sub_resource type="Texture3DRD" id="Texture3DRD_fy5k1"]
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_n23du"]
+gradient = ExtResource("4_i3xrb")
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_osc15")
+shader_parameter/bb_min = Vector3(-3171.919, 1000, -2404.02)
+shader_parameter/bb_max = Vector3(1828.081, 4000, 2595.98)
+shader_parameter/light_direction = Vector3(0, 0.9513272, -0.30818242)
+shader_parameter/light_color = Color(0.8793215, 0.96446246, 0.9999998, 1)
+shader_parameter/falloff_light = 0.4
+shader_parameter/falloff_color = 0.4
+shader_parameter/darkness_threshold = 0.01
+shader_parameter/cloud_threshold = 0.6499999854712
+shader_parameter/cloud_threshold_delta = 0.999999977648
+shader_parameter/cloud_density = 0.2
+shader_parameter/cloud_scale = 1.0
+shader_parameter/fine_scale = 4.0000000596048
+shader_parameter/fine_blend = 0.999999977648
+shader_parameter/scattering_forward = 0.5000000074506
+shader_parameter/scattering_backward = 0.30000000447036
+shader_parameter/scattering_omnidirectional = 0.70000001043084
+shader_parameter/scattering_directional = 0.5000000074506
+shader_parameter/scattering_direction_blend = 0.5000000074506
+shader_parameter/curl_noise_blend = 1.0000000475
+shader_parameter/curl_noise_scale = 0.2000000095
+shader_parameter/coverage_density = 0.0
+shader_parameter/padding0 = 0.0
+shader_parameter/padding1 = 0.0
+shader_parameter/padding2 = 0.0
+shader_parameter/density_texture = SubResource("Texture3DRD_5juve")
+shader_parameter/fine_density_texture = SubResource("Texture3DRD_fy5k1")
+shader_parameter/height_texture = SubResource("GradientTexture1D_n23du")
+shader_parameter/cloud_coverage = SubResource("NoiseTexture2D_rixys")
+shader_parameter/blue_noise = ExtResource("2_i3xrb")
+shader_parameter/curl_noise = ExtResource("3_24n7c")
