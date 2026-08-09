@@ -26,7 +26,7 @@ layout(std430, set = 1, binding = 0) buffer CloudSettings
 	UNIFORM(float falloff_color)                DEFAULT(1.0);
 	UNIFORM(float darkness_threshold)           DEFAULT(0.1);
 	UNIFORM(float cloud_threshold)              HINT(hint_range(0.0, 1.0, 0.01))    DEFAULT(0.5);
-	UNIFORM(float cloud_threshold_delta)        HINT(hint_range(0.0, 1.0, 0.01))    DEFAULT(0.1);
+	UNIFORM(float cloud_threshold_delta)        HINT(hint_range(0.0, 10.0, 0.01))   DEFAULT(0.1);
 	UNIFORM(float cloud_density);
 	UNIFORM(float cloud_scale)                  DEFAULT(1.0);
 	UNIFORM(float fine_scale)                   HINT(hint_range(0.0, 10.0, 0.1))    DEFAULT(4.0);
@@ -40,7 +40,7 @@ layout(std430, set = 1, binding = 0) buffer CloudSettings
 	UNIFORM(float curl_noise_blend)				HINT(hint_range(0.0, 20.0, 0.001));
 	UNIFORM(float curl_noise_scale) 			HINT(hint_range(0.0, 1.0, 0.001)); 
 	
-	UNIFORM(float coverage_density) 			HINT(hint_range(0.0, 1.0, 0.001))   DEFAULT(1.0);
+	UNIFORM(float coverage_density) 			HINT(hint_range(0.0, 5.0, 0.001))   DEFAULT(1.0);
 	UNIFORM(float ambient_light_bottom_factor)  HINT(hint_range(0.0, 5.0, 0.1))     DEFAULT(0.8);
 	UNIFORM(float ambient_light_top_factor)		HINT(hint_range(0.0, 5.0, 0.1))     DEFAULT(1.0);
 	UNIFORM(float padding2); // 36
@@ -227,77 +227,79 @@ float SampleDensityTexture(vec4 layer_density)
 	return density;
 }
 
-// ISO Surface
-float DensityISO(vec3 position)
+// maybe change uvw, to have w height along sphere, not rn tho
+vec3 WorldUVW(vec3 position)
 {
-	// float coarse_density = 
-	// 	0.5 * (texture(density_texture, uvw_world * 0.1).r) +
-	// 	0.25 * (texture(density_texture, uvw_world * 0.25).g) +
-	// 	0.125 * (texture(density_texture, uvw_world * 2.0).b);
-	// 	//-0.125 * (texture(density_texture, uvw_world * 5.0).a);
-	// coarse_density /= 0.9375;
-	return 0.0;
-}
-
-float Density(vec3 position)
-{
-	
-	
 	vec3 delta = bb_max - bb_min;
 	float max_dim = cloud_scale * delta.y; //max(delta.x, max(delta.y,delta.z));
 	
-	vec3 uvw = (position - bb_min) / vec3(delta);
+	//vec3 uvw = (position - bb_min) / vec3(delta);
 	vec3 uvw_world = position / vec3(max_dim);
-	
-	//float coverage = texture(cloud_coverage, uvw_world.xz * 0.1).r;
-	
-	
-	
+	return uvw_world;
+}
+
+// ISO Surface
+float DensityISO(vec3 uvw_world)
+{
 	float coarse_density = 
 		0.5 * (texture(density_texture, uvw_world * 0.1).r) +
 		0.25 * (texture(density_texture, uvw_world * 0.25).g) +
 		0.125 * (texture(density_texture, uvw_world * 2.0).b);
-		//-0.125 * (texture(density_texture, uvw_world * 5.0).a);
+		//0.125 * (texture(density_texture, uvw_world * 0.1).a);
 	coarse_density /= 0.9375;
+	return coarse_density;
+}
 
-	float coverage = clamp(texture(cloud_coverage, uvw_world.xz * 0.1).r + coverage_density, 0.0, 1.0);
-
+float DensityFine(vec3 uvw_world)
+{
 	vec3 curl_noise_vector = curl_noise_blend * (texture(curl_noise, uvw_world * curl_noise_scale).rgb - 0.5) * 2.0;
 	float fine_density = SampleDensityTexture(texture(fine_density_texture, curl_noise_vector + (uvw_world) * fine_scale)); //;
-	
-	//float density = course_density * (1.0 - fine_blend) + fine_density * fine_blend;
-	
-	float density = coarse_density
-		- mix(0.0, 1.0 - fine_density, (1.0 - coarse_density) * fine_blend);
-	
+	return fine_density;
+}
 
-
+float CoverageThreshold(vec3 position, vec3 uvw_world)
+{
+	float coverage_value = texture(cloud_coverage, uvw_world.xz * 0.1).r;
+	float coverage = clamp(coverage_value + coverage_density, 0.0, 1.0);
 
 	float height_u = (length(position - atmosphere_inner.xyz) - atmosphere_inner.w) / (atmosphere_thickness);
-
 	float height_density = texture(height_texture, vec2(height_u, 0.0)).r;
-	//density *= height_density;
 
+	return coverage * height_density * cloud_threshold;
+}
+
+float Density(vec3 position, vec3 uvw_world, float coarse_density, float fine_density)
+{
+	float density = coarse_density// - (fine_density) * fine_blend;
+		- mix(0.0, 1.0 - fine_density, (1.0 - coarse_density) * fine_blend);
+	
 	density = clamp(density,0.0,1.0);
-	//density *= 1.0 - uvw.y;
-	
-	// 0.0, 0.0,
-	// 
-	
-	//density *= height_density * height_density;
-	//density *= cloud_threshold;
-	
-	
 
-	float cloud_t = clamp((density - (1.0 - coverage * height_density * cloud_threshold)) / cloud_threshold_delta, 0.0, 1.0);
+	float coverage_threshold = CoverageThreshold(position, uvw_world);
+
+	float cloud_t = clamp(
+		(density - (1.0 - coverage_threshold)) / cloud_threshold_delta, 
+		0.0, 1.0
+	);
 	
-	
-	
-	
-	//return density * cloud_threshold;
+	//float cloud_contrast = clamp((cloud_density - 0.5) * cloud_density + 0.5, 0.0, 1.0);
+
 	return mix(0.0, cloud_density, cloud_t);
-	
-	//return step(density, cloud_threshold) * cloud_density;
+}
+
+float DensityCoarse(vec3 position)
+{
+	vec3 uvw_world = WorldUVW(position);
+	float coarse_density = DensityISO(uvw_world);
+	return Density(position, uvw_world, coarse_density, 0.0);
+}
+
+float DensityFull(vec3 position)
+{
+	vec3 uvw_world = WorldUVW(position);
+	float coarse_density = DensityISO(uvw_world);
+	float fine_density = DensityFine(uvw_world);
+	return Density(position, uvw_world, coarse_density, fine_density);
 }
 
 float BeerPowder(float optical_depth)
@@ -341,7 +343,7 @@ float LightContribution(vec3 ray_origin)
 	
 	for ( int i = 0; i < n_samples; i++ )
 	{			
-		density += Density(ray_origin);//exp(-falloff * );
+		density += DensityFull(ray_origin);//exp(-falloff * );
 		if ( density > exit_threshold )
 		{
 			break;
@@ -349,7 +351,7 @@ float LightContribution(vec3 ray_origin)
 		ray_origin += ray_step;
 	}
 
-	density += Density(ray_origin + light_direction * depth * 0.25);
+	density += DensityFull(ray_origin + light_direction * depth * 0.25);
 
 	float optical_depth = falloff_light * density * dt;
 	
@@ -399,7 +401,9 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 	
 	const int n_samples = 128;
 	
-	float dt = depth / float(n_samples-1);
+	float dt_coarse = depth / float(n_samples-1);
+	float dt = dt_coarse;
+	float dt_fine = 100.0;
 	
 	vec3 ray_step = ray_direction * dt;
 	
@@ -411,19 +415,59 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 	float phase = Phase(cosa);// max(, 0.0);
 	
 	float transmittance = 1.0;
-	float t = dt * (texture(blue_noise, fract(4.0 * screen_uv + ray_origin.xz)).r - 0.5);
+	float t = dt_coarse * (texture(blue_noise, fract(4.0 * screen_uv + ray_origin.xz)).r - 0.5);
 	float accumulated_weight = 0.0;
+
+	int empty_step = 0;
+	bool fine_step = false;
+
+	float previous_density = 0.0;
+
 	for ( int i = 0; i < n_samples; i++ )
 	{
 		//float t = -a / z + b;
 
 		
 		vec3 ray_position = ray_origin + ray_direction * (t);
+	
 
-		float density = Density(ray_position);
+		float density = DensityFull(ray_position);
+		
+		// if ( fine_step )
+		// 	density = DensityFull(ray_position);
+		// else	
+		// 	density = DensityCoarse(ray_position);
 		
 		if ( density > 0.001 )
 		{
+			// if ( ! fine_step )
+			// {
+			// 	t -= dt;
+			// 	ray_position = ray_origin + ray_direction * (t);
+			// 	fine_step = true;
+			// 	density = DensityFull(ray_position);
+			// }
+
+			float coarse_threshold = 0.5;
+
+			//dt = transmittance < coarse_threshold ? dt_coarse : dt_fine;
+
+			// dt = mix(
+			// 	dt_fine,
+			// 	dt_coarse * 0.25,
+			// 	(transmittance-coarse_threshold) / (1.0 - coarse_threshold)//mix(0.0, 0.3, transmittance)
+			// );
+
+			//dt = transmittance > 0.3 ? dt_fine : dt_coarse;
+
+			// dt = mix(
+			// 	dt_fine,
+			// 	dt_fine * 10.0,
+			// 	t / depth
+			// );
+
+			empty_step = 0;
+
 			float light_transmittance = LightContribution(ray_position);
 			
 			//color = light_color;// * 0.1 * light_depth;// LightContribution(ray_origin, light_depth);
@@ -453,6 +497,15 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 				transmittance = 0.0;
 				break;
 			}
+		}
+		else
+		{
+			// empty_step++;
+			// if ( empty_step > 10 )
+			// {
+			// 	dt = dt_coarse;
+			// 	fine_step = false;
+			// }
 		}
 		//ray_origin += ray_step;
 		t += dt;

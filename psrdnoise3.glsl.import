@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://brg43ee28ayip"
+path="res://.godot/imported/psrdnoise3.glsl-56ff0fcdf106ede0b640c33c5a4d7f0e.res"
+
+[deps]
+
+source_file="res://psrdnoise3.glsl"
+dest_files=["res://.godot/imported/psrdnoise3.glsl-56ff0fcdf106ede0b640c33c5a4d7f0e.res"]
+
+[params]
+

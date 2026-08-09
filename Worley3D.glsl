@@ -1,6 +1,11 @@
 #[compute]
 #version 450
 
+//https://jcgt.org/published/0011/01/02/
+// praise the gpu researchers <3
+#include "psrdnoise3.glsl"
+#include "psrdnoise2.glsl"
+
 // Invocations in the (x, y, z) dimension
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 layout(rgba8, set = 0, binding = 0) uniform restrict writeonly image3D out_texture;
@@ -103,7 +108,31 @@ float FractalWorleyNoise(ivec3 pixel, ivec3 max_size, int square_size, int octav
         square_size /= 2;
     }
 
-    float norm = (1.0 - pow(gain_factor, float(octaves))) / (1.0 - gain);
+    float norm = (1.0 - pow(gain_factor, float(octaves))) / (1.0 - gain_factor);
+    total /= norm;
+    return total;
+}
+
+float FractalSimplex(vec3 uvw, vec3 scale, int octaves)
+{
+    float total = 0.0;
+    float gain = 1.0;
+
+    for ( int i = 0; i < octaves; i++ )
+    {
+        vec3 gradient;
+        float p = 0.5 * psrdnoise(
+            uvw * scale, 
+            scale, 
+            fract(i * 34.0), 
+            gradient
+        ) + 0.5;
+        total += p * gain;
+        scale *= 2.0;
+        gain *= 0.5;
+    }
+
+    float norm = (1.0 - pow(0.5, float(octaves))) / (1.0 - 0.5);
     total /= norm;
     return total;
 }
@@ -118,11 +147,30 @@ void main() {
 
     ivec4 square_size = ivec4(params.square_size);
 
+    // xz plane
+    vec3 plane_uvw = vec3(pixel) / vec3(max_size-1);
+
+    // float p = fbmPerlin(
+    //     plane_uv, 
+    //     vec2(5.0), // scale
+    //     5, // octaves
+    //     10.0, 0.0, //shift translate,rotate
+    //     0.5, 2.0, // gain, lacuranity
+    //     5, // mode
+    //     1.0, // factor
+    //     0.0, //offset
+    //     0.0, //octave factor
+    //     0.0
+    // );
+
+    float worley_blend = 1.0;
+
     vec4 result = vec4(
-        FractalWorleyNoise(pixel, max_size, square_size.x, 5, 0.5),
-        FractalWorleyNoise(pixel, max_size, square_size.y, 5, 0.5),
-        FractalWorleyNoise(pixel, max_size, square_size.z, 5, 0.5),
-        FractalWorleyNoise(pixel, max_size, square_size.w, 5, 0.5)
+        FractalWorleyNoise(pixel, max_size, square_size.x, 3, 0.5),
+        FractalWorleyNoise(pixel, max_size, square_size.y, 3, 0.5),
+        FractalWorleyNoise(pixel, max_size, square_size.z, 3, 0.5),
+        //FractalWorleyNoise(pixel, max_size, square_size.w, 5, 0.5) *
+        FractalSimplex(plane_uvw, vec3(2.0), 5) * (1.0 - worley_blend) + FractalWorleyNoise(pixel, max_size, square_size.w, 3, 0.5) * worley_blend
     );
 
     ivec3 index = ivec3(gl_GlobalInvocationID.xyz);
