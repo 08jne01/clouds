@@ -27,7 +27,7 @@ sky_material = SubResource("ProceduralSkyMaterial_akxrc")
 background_mode = 2
 sky = SubResource("Sky_0yjkd")
 
-[sub_resource type="Texture2DArrayRD" id="Texture2DArrayRD_5c1cw"]
+[sub_resource type="Texture2DArrayRD" id="Texture2DArrayRD_xlvrw"]
 
 [sub_resource type="CompositorEffect" id="CompositorEffect_xlvrw"]
 resource_local_to_scene = false

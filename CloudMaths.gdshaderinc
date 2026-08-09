@@ -41,9 +41,10 @@ layout(std430, set = 1, binding = 0) buffer CloudSettings
 	UNIFORM(float curl_noise_scale) 			HINT(hint_range(0.0, 1.0, 0.001)); 
 	
 	UNIFORM(float coverage_density) 			HINT(hint_range(0.0, 1.0, 0.001))   DEFAULT(1.0);
-	UNIFORM(float padding0);
-	UNIFORM(float padding1);
+	UNIFORM(float ambient_light_bottom_factor)  HINT(hint_range(0.0, 5.0, 0.1))     DEFAULT(0.8);
+	UNIFORM(float ambient_light_top_factor)		HINT(hint_range(0.0, 5.0, 0.1))     DEFAULT(1.0);
 	UNIFORM(float padding2); // 36
+	UNIFORM(vec4 ambient_light_color)			HINT(source_color);
 #ifdef COMPUTE
 };
 #endif
@@ -226,9 +227,21 @@ float SampleDensityTexture(vec4 layer_density)
 	return density;
 }
 
-float Density(vec3 position, float time)
+// ISO Surface
+float DensityISO(vec3 position)
 {
-	position += time * vec3(20.0,0.0,0.0);
+	// float coarse_density = 
+	// 	0.5 * (texture(density_texture, uvw_world * 0.1).r) +
+	// 	0.25 * (texture(density_texture, uvw_world * 0.25).g) +
+	// 	0.125 * (texture(density_texture, uvw_world * 2.0).b);
+	// 	//-0.125 * (texture(density_texture, uvw_world * 5.0).a);
+	// coarse_density /= 0.9375;
+	return 0.0;
+}
+
+float Density(vec3 position)
+{
+	
 	
 	vec3 delta = bb_max - bb_min;
 	float max_dim = cloud_scale * delta.y; //max(delta.x, max(delta.y,delta.z));
@@ -297,9 +310,9 @@ float Beer(float optical_depth)
 	return exp(-optical_depth);
 }
 
-float LightContribution(vec3 ray_origin, float time)
+float LightContribution(vec3 ray_origin)
 {
-	vec2 intersection = vec2(30000.0); // pass in max distance
+	vec2 intersection = vec2(max_ray_distance); // pass in max distance
 	
 	IntersectShell(
 		intersection,
@@ -328,7 +341,7 @@ float LightContribution(vec3 ray_origin, float time)
 	
 	for ( int i = 0; i < n_samples; i++ )
 	{			
-		density += Density(ray_origin, time);//exp(-falloff * );
+		density += Density(ray_origin);//exp(-falloff * );
 		if ( density > exit_threshold )
 		{
 			break;
@@ -336,7 +349,7 @@ float LightContribution(vec3 ray_origin, float time)
 		ray_origin += ray_step;
 	}
 
-	density += Density(ray_origin + light_direction * depth * 0.25, time);
+	density += Density(ray_origin + light_direction * depth * 0.25);
 
 	float optical_depth = falloff_light * density * dt;
 	
@@ -372,10 +385,17 @@ vec2 Random(vec2 uv)
 		vec2(12.9898,78.233))) * 43758.5453123));
 }
 
-vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv, float time)
+
+float AmbientLightContribution( vec3 position, float alpha )
+{
+	float h = (position.y - atmosphere_0) / atmosphere_thickness;
+	return alpha * mix(ambient_light_bottom_factor, ambient_light_top_factor, h);
+}
+
+vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float depth, vec2 screen_uv)
 {
 	// environment colour
-	vec3 color = vec3(0.0);// texture(screen_texture, screen_uv).rgb;// vec3(1.0);//vec3(0.0);
+	vec3 color = vec3(0.0, 0.0, 0.0);// texture(screen_texture, screen_uv).rgb;// vec3(1.0);//vec3(0.0);
 	
 	const int n_samples = 128;
 	
@@ -385,12 +405,13 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 	
 	
 	float light_energy = 0.0;
+	float ambient_light_energy = 0.0;
 	
 	float cosa = dot(ray_direction, light_direction);
 	float phase = Phase(cosa);// max(, 0.0);
 	
 	float transmittance = 1.0;
-	float t = dt * (texture(blue_noise, fract(4.0 * screen_uv * time)).r - 0.5);
+	float t = dt * (texture(blue_noise, fract(4.0 * screen_uv + ray_origin.xz)).r - 0.5);
 	float accumulated_weight = 0.0;
 	for ( int i = 0; i < n_samples; i++ )
 	{
@@ -399,11 +420,11 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 		
 		vec3 ray_position = ray_origin + ray_direction * (t);
 
-		float density = Density(ray_position, time);
+		float density = Density(ray_position);
 		
 		if ( density > 0.001 )
 		{
-			float light_transmittance = LightContribution(ray_position, time);
+			float light_transmittance = LightContribution(ray_position);
 			
 			//color = light_color;// * 0.1 * light_depth;// LightContribution(ray_origin, light_depth);
 
@@ -412,9 +433,11 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 
 			// analytic integral of transmittance over this step
 			float light_transmittance_step = (1.0 - transmittance_step) / falloff_color;
-			light_energy += transmittance * light_transmittance * light_transmittance_step;
-
+			float S = transmittance * light_transmittance_step;
+			light_energy += S * light_transmittance;
+			ambient_light_energy += S * AmbientLightContribution(ray_position, alpha);
 			transmittance *= transmittance_step;
+			
 
 			// float weight = density * dt;
 			// proj_depth += (t + depth) * weight;
@@ -438,7 +461,8 @@ vec4 RayMarch(inout float proj_depth, vec3 ray_origin, vec3 ray_direction, float
 	//proj_depth = proj_depth / accumulated_weight;
 	
 	light_energy *= phase;// * dt * 1.0;
-	return vec4(light_color.rgb * light_energy, 1.0 - transmittance);
+	ambient_light_energy *= phase;
+	return vec4(ambient_light_color.rgb * ambient_light_energy + light_color.rgb * light_energy, 1.0 - transmittance);
 }
 
 vec4 CalculateCloud(
@@ -446,8 +470,7 @@ vec4 CalculateCloud(
 	vec3 ray_origin,
 	vec3 ray_direction,
 	vec2 screen_uv,
-	float pixel_depth,
-	float time
+	float pixel_depth
 )
 {
 	vec3 inverse_ray_direction = 1.0 / ray_direction;
@@ -497,8 +520,7 @@ vec4 CalculateCloud(
 		ray_origin + ray_direction * (t - 0.01), 
 		ray_direction, 
 		depth, 
-		screen_uv,
-		time
+		screen_uv
 	);
 
 	if ( abs(proj_depth-depth) < 0.1 )
@@ -540,14 +562,14 @@ vec4 ProcessPixel(
 
 	//return vec4(vec3(linear_depth / 1000.0), 1.0);
 
+	ray_origin += time * vec3(20.0,0.0,0.0);
 
 	vec4 pixel = CalculateCloud(
 		proj_depth,
 		ray_origin,
 		ray_direction,
 		screen_uv,
-		linear_depth,
-		time
+		linear_depth
 	);
 
 	return pixel;

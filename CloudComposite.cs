@@ -31,7 +31,7 @@ public partial class CloudComposite : CompositorEffect
     byte[] render_data_buffer_bytes = new byte[1024];
 
     Rid cloud_settings_buffer;
-    byte[] cloud_settings_buffer_bytes = new byte[36 * 4];
+    byte[] cloud_settings_buffer_bytes = new byte[40 * 4];
 
     [Export] Texture2DArrayRD tex = new Texture2DArrayRD();
 
@@ -464,10 +464,23 @@ public partial class CloudComposite : CompositorEffect
             cloud_material.GetShaderParameter("coverage_density").As<float>()
         );
 
+        settings_size = CopyValue(
+            cloud_settings_buffer_bytes, settings_size,
+            cloud_material.GetShaderParameter("ambient_light_bottom_factor").As<float>()
+        );
+
+        settings_size = CopyValue(
+            cloud_settings_buffer_bytes, settings_size,
+            cloud_material.GetShaderParameter("ambient_light_top_factor").As<float>()
+        );
+
         // padding
         settings_size = CopyValue(cloud_settings_buffer_bytes, settings_size,0.0f);
-        settings_size = CopyValue(cloud_settings_buffer_bytes, settings_size,0.0f);
-        settings_size = CopyValue(cloud_settings_buffer_bytes, settings_size,0.0f);
+
+        settings_size = CopySpanValues<float>(
+            cloud_settings_buffer_bytes, settings_size,
+            ConvertColor(cloud_material.GetShaderParameter("ambient_light_color").As<Color>())
+        );
 
         Debug.Assert(settings_size % 4 == 0);
 
