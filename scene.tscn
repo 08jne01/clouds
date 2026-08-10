@@ -19,6 +19,7 @@ flip_faces = true
 size = Vector2(2, 2)
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_akxrc"]
+sky_top_color = Color(0.25599998, 0.46720007, 0.64, 1)
 
 [sub_resource type="Sky" id="Sky_0yjkd"]
 sky_material = SubResource("ProceduralSkyMaterial_akxrc")

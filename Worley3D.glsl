@@ -163,14 +163,14 @@ void main() {
     //     0.0
     // );
 
-    float worley_blend = 1.0;
+    float worley_blend = 0.9;
 
     vec4 result = vec4(
-        FractalWorleyNoise(pixel, max_size, square_size.x, 3, 0.5),
-        FractalWorleyNoise(pixel, max_size, square_size.y, 3, 0.5),
+        FractalWorleyNoise(pixel, max_size, square_size.w, 3, 0.5),
         FractalWorleyNoise(pixel, max_size, square_size.z, 3, 0.5),
+        FractalWorleyNoise(pixel, max_size, square_size.y, 3, 0.5),
         //FractalWorleyNoise(pixel, max_size, square_size.w, 5, 0.5) *
-        FractalSimplex(plane_uvw, vec3(2.0), 5) * (1.0 - worley_blend) + FractalWorleyNoise(pixel, max_size, square_size.w, 3, 0.5) * worley_blend
+        FractalSimplex(plane_uvw, vec3(2.0), 5) * (1.0 - worley_blend) + FractalWorleyNoise(pixel, max_size, square_size.x, 3, 0.5) * worley_blend
     );
 
     ivec3 index = ivec3(gl_GlobalInvocationID.xyz);

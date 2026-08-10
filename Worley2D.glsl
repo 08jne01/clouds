@@ -95,10 +95,10 @@ void main() {
     // float pixel_distance = length(point - pixel_location);
 
     vec4 result = vec4(
-        WorleyNoise(pixel, max_size, square_size.x),
-        WorleyNoise(pixel, max_size, square_size.y),
+        WorleyNoise(pixel, max_size, square_size.w),
         WorleyNoise(pixel, max_size, square_size.z),
-        WorleyNoise(pixel, max_size, square_size.w)
+        WorleyNoise(pixel, max_size, square_size.y),
+        WorleyNoise(pixel, max_size, square_size.x)
     );
 
     //vec4 result = vec4(vec2(1.0 - min_distance), point_hightlight, 1.0);

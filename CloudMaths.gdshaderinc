@@ -40,7 +40,7 @@ layout(std430, set = 1, binding = 0) buffer CloudSettings
 	UNIFORM(float curl_noise_blend)				HINT(hint_range(0.0, 20.0, 0.001));
 	UNIFORM(float curl_noise_scale) 			HINT(hint_range(0.0, 1.0, 0.001)); 
 	
-	UNIFORM(float coverage_density) 			HINT(hint_range(0.0, 5.0, 0.001))   DEFAULT(1.0);
+	UNIFORM(float coverage_density) 			HINT(hint_range(0.0, 1.0, 0.001))   DEFAULT(1.0);
 	UNIFORM(float ambient_light_bottom_factor)  HINT(hint_range(0.0, 5.0, 0.1))     DEFAULT(0.8);
 	UNIFORM(float ambient_light_top_factor)		HINT(hint_range(0.0, 5.0, 0.1))     DEFAULT(1.0);
 	UNIFORM(float padding2); // 36
@@ -58,8 +58,8 @@ LAYOUT(set = 1, binding = 6, uniform sampler3D curl_noise)           HINT(repeat
 //LAYOUT(set = 1, binding = 6, uniform sampler3D curl_noise)           HINT(repeat_enable);
 
 const float earth_radius = 6400000.0; //6400000.0;
-const float atmosphere_0 = 500.0;
-const float atmosphere_1 = 5000.0;
+const float atmosphere_0 = 100.0;
+const float atmosphere_1 = 10000.0;
 const float atmosphere_thickness = atmosphere_1 - atmosphere_0;
 const float max_ray_distance = 10000.0;
 
@@ -242,10 +242,10 @@ vec3 WorldUVW(vec3 position)
 float DensityISO(vec3 uvw_world)
 {
 	float coarse_density = 
-		0.5 * (texture(density_texture, uvw_world * 0.1).r) +
-		0.25 * (texture(density_texture, uvw_world * 0.25).g) +
-		0.125 * (texture(density_texture, uvw_world * 2.0).b);
-		//0.125 * (texture(density_texture, uvw_world * 0.1).a);
+		0.5 * (texture(density_texture, 0.1 * uvw_world).r) +
+		0.25 * (texture(density_texture, 0.25 * uvw_world).g) +
+		0.125 * (texture(density_texture, 0.5 * uvw_world).b);
+		0.0625 * (texture(density_texture, 1.0 * uvw_world).a);
 	coarse_density /= 0.9375;
 	return coarse_density;
 }
@@ -253,14 +253,23 @@ float DensityISO(vec3 uvw_world)
 float DensityFine(vec3 uvw_world)
 {
 	vec3 curl_noise_vector = curl_noise_blend * (texture(curl_noise, uvw_world * curl_noise_scale).rgb - 0.5) * 2.0;
-	float fine_density = SampleDensityTexture(texture(fine_density_texture, curl_noise_vector + (uvw_world) * fine_scale)); //;
+
+	vec3 fine_uvw = curl_noise_vector + uvw_world * fine_scale;
+
+	float fine_density = 
+		0.5 * (texture(fine_density_texture, fine_uvw).r) +
+		0.25 * (texture(fine_density_texture, fine_uvw).g) +
+		0.125 * (texture(fine_density_texture, fine_uvw).b);
+		0.0625 * (texture(fine_density_texture, fine_uvw).a);
+	fine_density /= 0.9375;
+
 	return fine_density;
 }
 
 float CoverageThreshold(vec3 position, vec3 uvw_world)
 {
-	float coverage_value = texture(cloud_coverage, uvw_world.xz * 0.1).r;
-	float coverage = clamp(coverage_value + coverage_density, 0.0, 1.0);
+	float coverage_value = texture(cloud_coverage, uvw_world.xz * 0.01).r;
+	float coverage = coverage_value + coverage_density;
 
 	float height_u = (length(position - atmosphere_inner.xyz) - atmosphere_inner.w) / (atmosphere_thickness);
 	float height_density = texture(height_texture, vec2(height_u, 0.0)).r;
@@ -270,8 +279,8 @@ float CoverageThreshold(vec3 position, vec3 uvw_world)
 
 float Density(vec3 position, vec3 uvw_world, float coarse_density, float fine_density)
 {
-	float density = coarse_density// - (fine_density) * fine_blend;
-		- mix(0.0, 1.0 - fine_density, (1.0 - coarse_density) * fine_blend);
+	float density = coarse_density - (fine_density) * fine_blend;
+		//- mix(0.0, 1.0 - fine_density, (1.0 - coarse_density) * fine_blend);
 	
 	density = clamp(density,0.0,1.0);
 
