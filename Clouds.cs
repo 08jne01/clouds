@@ -111,7 +111,7 @@ public partial class Clouds : MeshInstance3D
         UpdateShader();
 
         GetViewport().GetCamera3D().Near = 0.1f;
-        GetViewport().GetCamera3D().Far = 40000.0f;
+        GetViewport().GetCamera3D().Far = 100000.0f;
     }
 
 

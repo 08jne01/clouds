@@ -18,11 +18,13 @@ material = ExtResource("1_xlvrw")
 flip_faces = true
 size = Vector2(2, 2)
 
-[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_akxrc"]
-sky_top_color = Color(0.25599998, 0.46720007, 0.64, 1)
+[sub_resource type="PhysicalSkyMaterial" id="PhysicalSkyMaterial_24n7c"]
+rayleigh_color = Color(0.162, 0.3153, 0.6, 1)
+ground_color = Color(0.308, 0.39673337, 0.55, 1)
+energy_multiplier = 4.0
 
 [sub_resource type="Sky" id="Sky_0yjkd"]
-sky_material = SubResource("ProceduralSkyMaterial_akxrc")
+sky_material = SubResource("PhysicalSkyMaterial_24n7c")
 
 [sub_resource type="Environment" id="Environment_4ttxi"]
 background_mode = 2
@@ -111,12 +113,12 @@ light = NodePath("../DirectionalLight3D")
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1712109579]
 transform = Transform3D(1, 0, 0, 0, 0.80522037, -0.5929757, 0, 0.5929757, 0.80522037, 0, -2.2618675, 0)
+visible = false
 cull_mask = 1
 near = 0.1
-far = 40000.0
+far = 100000.0
 
 [node name="CloudSurface" type="MeshInstance3D" parent="Camera3D" unique_id=613751650]
-visible = false
 layers = 1048575
 extra_cull_margin = 16384.0
 mesh = SubResource("QuadMesh_73fnb")
@@ -139,7 +141,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1226.4536, -433.30573)
 mesh = SubResource("SphereMesh_4ttxi")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1869975590]
-transform = Transform3D(1, 0, 0, 0, -0.3081826, 0.9513272, 0, -0.9513273, -0.30818242, 0, 30.337557, 140.68443)
+transform = Transform3D(0.985801, 0.11353108, -0.12372263, 0.1674218, -0.7211629, 0.6722307, -0.012905095, -0.6833995, -0.72993064, 0, 30.337557, 140.68443)
 
 [node name="Water" type="MeshInstance3D" parent="." unique_id=531172004]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20.778538, 28.265081, 17.473635)

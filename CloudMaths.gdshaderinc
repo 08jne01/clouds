@@ -29,7 +29,7 @@ layout(std430, set = 1, binding = 0) buffer CloudSettings
 	UNIFORM(float cloud_threshold_delta)        HINT(hint_range(0.0, 10.0, 0.01))   DEFAULT(0.1);
 	UNIFORM(float cloud_density);
 	UNIFORM(float cloud_scale)                  DEFAULT(1.0);
-	UNIFORM(float fine_scale)                   HINT(hint_range(0.0, 10.0, 0.1))    DEFAULT(4.0);
+	UNIFORM(float fine_scale)                   HINT(hint_range(0.0, 100.0, 0.01))    DEFAULT(4.0);
 	UNIFORM(float fine_blend)                   HINT(hint_range(0.0, 1.0, 0.01))    DEFAULT(0.2);
 	
 	UNIFORM(float scattering_forward)           HINT(hint_range(0.0, 1.0, 0.1));
@@ -40,7 +40,7 @@ layout(std430, set = 1, binding = 0) buffer CloudSettings
 	UNIFORM(float curl_noise_blend)				HINT(hint_range(0.0, 20.0, 0.001));
 	UNIFORM(float curl_noise_scale) 			HINT(hint_range(0.0, 1.0, 0.001)); 
 	
-	UNIFORM(float coverage_density) 			HINT(hint_range(0.0, 1.0, 0.001))   DEFAULT(1.0);
+	UNIFORM(float coverage_density) 			HINT(hint_range(-1.0, 1.0, 0.001))   DEFAULT(1.0);
 	UNIFORM(float ambient_light_bottom_factor)  HINT(hint_range(0.0, 5.0, 0.1))     DEFAULT(0.8);
 	UNIFORM(float ambient_light_top_factor)		HINT(hint_range(0.0, 5.0, 0.1))     DEFAULT(1.0);
 	UNIFORM(float padding2); // 36
@@ -59,9 +59,9 @@ LAYOUT(set = 1, binding = 6, uniform sampler3D curl_noise)           HINT(repeat
 
 const float earth_radius = 6400000.0; //6400000.0;
 const float atmosphere_0 = 100.0;
-const float atmosphere_1 = 10000.0;
+const float atmosphere_1 = 15000.0;
 const float atmosphere_thickness = atmosphere_1 - atmosphere_0;
-const float max_ray_distance = 10000.0;
+const float max_ray_distance = 50000.0;
 
 const vec4 atmosphere_inner = vec4(
 	0.0, -earth_radius, 0.0,
@@ -242,25 +242,26 @@ vec3 WorldUVW(vec3 position)
 float DensityISO(vec3 uvw_world)
 {
 	float coarse_density = 
-		0.5 * (texture(density_texture, 0.1 * uvw_world).r) +
-		0.25 * (texture(density_texture, 0.25 * uvw_world).g) +
-		0.125 * (texture(density_texture, 0.5 * uvw_world).b);
-		0.0625 * (texture(density_texture, 1.0 * uvw_world).a);
-	coarse_density /= 0.9375;
+		1.0 * (texture(density_texture, 0.1 * uvw_world).r) +
+		0.5 * (texture(density_texture, 0.25 * uvw_world).g) +
+		0.25 * (texture(density_texture, 0.5 * uvw_world).b);
+		//0.2 * (texture(density_texture, 1.0 * uvw_world).a);
+	//coarse_density /= 0.9375;
 	return coarse_density;
 }
 
 float DensityFine(vec3 uvw_world)
 {
+	//uvw_world *= 0.1;
 	vec3 curl_noise_vector = curl_noise_blend * (texture(curl_noise, uvw_world * curl_noise_scale).rgb - 0.5) * 2.0;
 
 	vec3 fine_uvw = curl_noise_vector + uvw_world * fine_scale;
 
 	float fine_density = 
-		0.5 * (texture(fine_density_texture, fine_uvw).r) +
-		0.25 * (texture(fine_density_texture, fine_uvw).g) +
-		0.125 * (texture(fine_density_texture, fine_uvw).b);
-		0.0625 * (texture(fine_density_texture, fine_uvw).a);
+		(texture(fine_density_texture, fine_uvw).r);// +
+		//(texture(fine_density_texture, fine_uvw).g) +
+		//(texture(fine_density_texture, fine_uvw).b);
+		//(texture(fine_density_texture, fine_uvw).a);
 	fine_density /= 0.9375;
 
 	return fine_density;
@@ -274,7 +275,7 @@ float CoverageThreshold(vec3 position, vec3 uvw_world)
 	float height_u = (length(position - atmosphere_inner.xyz) - atmosphere_inner.w) / (atmosphere_thickness);
 	float height_density = texture(height_texture, vec2(height_u, 0.0)).r;
 
-	return coverage * height_density * cloud_threshold;
+	return coverage * height_density;
 }
 
 float Density(vec3 position, vec3 uvw_world, float coarse_density, float fine_density)
@@ -287,13 +288,12 @@ float Density(vec3 position, vec3 uvw_world, float coarse_density, float fine_de
 	float coverage_threshold = CoverageThreshold(position, uvw_world);
 
 	float cloud_t = clamp(
-		(density - (1.0 - coverage_threshold)) / cloud_threshold_delta, 
+		(density - (1.0 - cloud_threshold)) / cloud_threshold_delta, 
 		0.0, 1.0
 	);
 	
 	//float cloud_contrast = clamp((cloud_density - 0.5) * cloud_density + 0.5, 0.0, 1.0);
-
-	return mix(0.0, cloud_density, cloud_t);
+	return mix(0.0, cloud_density, cloud_t) * coverage_threshold;
 }
 
 float DensityCoarse(vec3 position)
@@ -539,10 +539,10 @@ vec4 CalculateCloud(
 	//vec2 intersection = IntersectBox(bb_min, bb_max, ray_origin, inverse_ray_direction);
 
 	float max_ray_distance_truncated = max_ray_distance;
-	// if ( ray_direction.y < 0.0 )
-	// {
-	// 	max_ray_distance_truncated = min(-ray_origin.y / ray_direction.y, max_ray_distance_truncated);
-	// }
+	if ( ray_direction.y < 0.0 )
+	{
+		max_ray_distance_truncated = min(-ray_origin.y / ray_direction.y, max_ray_distance_truncated);
+	}
 
 	vec2 intersection = vec2(max_ray_distance_truncated);
 
